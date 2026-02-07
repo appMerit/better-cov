@@ -1,0 +1,19 @@
+# PATCH_SURFACE.yml
+# This file defines where fixes should be applied vs where they should not.
+# Fault injection code is off-limits; fixes must target the app logic.
+
+allowlist:
+  - "app/**"
+
+denylist:
+  - "tests/**"
+  - "**/faults/**"
+  - "**/fixtures/**"
+  - "**/__pycache__/**"
+  - "**/*.pyc"
+  - "**/.pytest_cache/**"
+
+description: |
+  This demo repo uses fault injection to simulate failures.
+  All fixes should target the application code in app/, not the test infrastructure.
+  The fault injection system (tests/faults/) should never be modified to "fix" failing tests.
