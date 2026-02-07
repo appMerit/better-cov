@@ -29,6 +29,10 @@ cd better-cov
 
 2. Install dependencies:
 ```bash
+# Using uv (recommended)
+uv sync
+
+# Or using pip
 pip install -r requirements.txt
 ```
 
@@ -45,6 +49,10 @@ cp .env.example .env
 Run contract discovery on a codebase:
 
 ```bash
+# Using uv (recommended)
+uv run python run_discovery.py merit-travelops-demo/app
+
+# Or directly with python
 python run_discovery.py merit-travelops-demo/app
 ```
 
@@ -52,10 +60,16 @@ python run_discovery.py merit-travelops-demo/app
 
 ```bash
 # Specify output file
-python run_discovery.py merit-travelops-demo/app -o results/contracts.json
+uv run python run_discovery.py merit-travelops-demo/app -o results/contracts.json
 
 # Increase max turns for thorough analysis
-python run_discovery.py merit-travelops-demo/app --max-turns 150
+uv run python run_discovery.py merit-travelops-demo/app --max-turns 150
+
+# Quiet mode (no progress logging)
+uv run python run_discovery.py merit-travelops-demo/app --quiet
+
+# Debug mode (detailed logging)
+uv run python run_discovery.py merit-travelops-demo/app --debug
 ```
 
 ### Command Line Arguments
@@ -63,6 +77,8 @@ python run_discovery.py merit-travelops-demo/app --max-turns 150
 - `codebase_path`: Path to the codebase to analyze (required)
 - `-o, --output`: Path to save results JSON file (default: `contracts_output.json`)
 - `--max-turns`: Maximum turns for agent (default: 100)
+- `--quiet`: Suppress progress logging
+- `--debug`: Show detailed debug information
 
 ## Output Format
 
@@ -145,7 +161,20 @@ better-cov/
 ## Example: Analyzing merit-travelops-demo
 
 ```bash
-python run_discovery.py merit-travelops-demo/app
+uv run python run_discovery.py merit-travelops-demo/app
+```
+
+You'll see real-time progress as the agent works:
+```
+🔍 Starting contract discovery for: merit-travelops-demo/app
+📊 Max turns: 100
+
+🤖 Agent starting analysis...
+
+🔄 Turn 1/100: Agent working...
+🔄 Turn 2/100: Agent working...
+...
+✅ Agent completed in 45 turns
 ```
 
 Expected findings:
