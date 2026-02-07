@@ -16,7 +16,7 @@ load_dotenv()
 
 
 async def run_contract_discovery(
-    codebase_path: str, output_file: str | None = None, max_turns: int = 100
+    codebase_path: str, output_file: str | None = None, max_turns: int = 100, verbose: bool = True, debug: bool = False
 ) -> ContractDiscoveryResult:
     """Run contract discovery on a codebase.
 
@@ -38,7 +38,14 @@ async def run_contract_discovery(
 
     # Create and run agent
     agent = ContractDiscoveryAgent(llm_client)
-    result = await agent.discover_contracts(codebase_path, max_turns=max_turns)
+    
+    if verbose:
+        print("🤖 Agent starting analysis...")
+        print()
+    
+    result = await agent.discover_contracts(
+        codebase_path, max_turns=max_turns, verbose=verbose
+    )
 
     # Print summary
     print("\n" + "=" * 80)
@@ -104,14 +111,31 @@ async def main():
         default=100,
         help="Maximum turns for agent (default: 100)",
     )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress progress logging",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show detailed debug information",
+    )
 
     args = parser.parse_args()
 
     try:
+        # Enable debug logging if requested
+        if args.debug:
+            import logging
+            logging.basicConfig(level=logging.DEBUG)
+        
         await run_contract_discovery(
             codebase_path=args.codebase_path,
             output_file=args.output,
             max_turns=args.max_turns,
+            verbose=not args.quiet,
+            debug=args.debug,
         )
     except Exception as e:
         print(f"\n❌ Error: {e}")

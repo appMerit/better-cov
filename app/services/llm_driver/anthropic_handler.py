@@ -216,6 +216,7 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
         task: str,
         output_type: type[ModelT | str] = str,
         max_turns: int | None = None,
+        verbose: bool = True,
     ) -> ModelT | str:
         options = self.compiled_agents[agent]
         options.max_turns = max_turns
@@ -230,10 +231,16 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
                     case AssistantMessage():
                         turn_count += 1
                         last_assistant_message = message
+                        if verbose:
+                            # Show turn progress
+                            print(f"🔄 Turn {turn_count}/{max_turns or '∞'}: Agent working...")
                         continue
                     case ResultMessage(result=res):
                         client_response = res
+                        if verbose:
+                            print(f"✅ Agent completed in {turn_count} turns")
                     case _:
+                        # Handle other message types silently
                         continue
 
         if not client_response:

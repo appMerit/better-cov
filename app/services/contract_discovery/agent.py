@@ -28,7 +28,7 @@ class ContractDiscoveryAgent:
         self.llm_client = llm_client
 
     async def discover_contracts(
-        self, codebase_path: str | Path, max_turns: int = 100
+        self, codebase_path: str | Path, max_turns: int = 100, verbose: bool = True
     ) -> ContractDiscoveryResult:
         """Discover all contracts in a codebase.
 
@@ -68,6 +68,7 @@ class ContractDiscoveryAgent:
             task=task,
             output_type=self.output_type,
             max_turns=max_turns,
+            verbose=verbose,
         )
 
         return result
