@@ -74,8 +74,12 @@ class ContractDiscoveryAgent:
         # Convert the text response to structured format
         if verbose:
             print(f"\n🔄 Converting response to structured format...")
+            print(f"\n📄 Agent's text output (first 1000 chars):")
+            print(response_text[:1000] if response_text else "None")
+            print("...\n")
         
         result, _usage = await self.llm_client.create_object(
+            model=self.llm_client.default_small_model,  # Use fast Haiku model for conversion
             prompt=f"""Convert the agent's contract analysis into a structured ContractDiscoveryResult.
 
 Codebase: {codebase_path}

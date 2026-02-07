@@ -128,7 +128,7 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
                 msg = await client.messages.create(
                     model=model or self.default_big_model,
                     temperature=0,
-                    max_tokens=8192,  # Increased for complex outputs
+                    max_tokens=16384,  # Increased for complex ContractObligation outputs
                     messages=[{"role": "user", "content": prompt}],
                     tools=tools,
                     tool_choice={"type": "tool", "name": "emit_structured_result"},
@@ -172,14 +172,16 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
                 
             except Exception as e:
                 last_error = e
+                print(f"⚠️  Validation attempt {attempt + 1} failed: {str(e)[:200]}")
                 if attempt < max_retries - 1:
                     # Retry with more explicit prompt
                     prompt = f"""{prompt}
 
 IMPORTANT: Your previous attempt failed with error: {str(e)}
 Make sure to include ALL required fields in the schema, especially:
-- contracts: must be an array of Contract objects (not empty unless truly no contracts found)
+- contracts: must be an array of objects (not empty unless truly no contracts found)
 - summary: must be a string describing findings
+- All nested required fields must be populated
 Check the schema carefully and provide complete data."""
                     continue
                 else:
