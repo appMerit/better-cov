@@ -3,11 +3,6 @@
 .env.local
 .env.*.local
 
-# Output files
-contracts_output.json
-results/
-output/
-
 # Python
 __pycache__/
 *.py[cod]
