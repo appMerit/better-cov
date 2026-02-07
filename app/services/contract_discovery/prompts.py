@@ -102,38 +102,53 @@ TASK_TEMPLATE = """Analyze the codebase to discover the most important contracts
 - expected_behavior: What should happen
 - test_strategy: How to verify it works
 
-**CRITICAL - Output Format:**
-You MUST call `emit_structured_result` with this EXACT structure:
+**When Done:**
+After finding 10-15 contracts, provide a detailed report in this EXACT format:
+
 ```
-{{
-  "codebase_path": "merit-travelops-demo/app",
-  "total_contracts": 15,
-  "contracts": [
-    {{
-      "id": "contract_1",
-      "type": "json_schema",
-      "severity": "critical",
-      "title": "TravelOpsResponse Schema",
-      "description": "API response must follow this structure",
-      "location": {{
-        "file_path": "schemas.py",
-        "line_start": 63,
-        "line_end": 69,
-        "code_snippet": "class TravelOpsResponse(BaseModel):\\n    assistant_message: str\\n    itinerary: dict"
-      }},
-      "expected_behavior": "All responses must be valid TravelOpsResponse objects",
-      "test_strategy": "Use pydantic validation to test response structure"
-    }}
-  ],
-  "summary": "Found 15 contracts including schemas, policies, and constraints"
-}}
+===== CONTRACT DISCOVERY REPORT =====
+
+CONTRACT 1:
+ID: contract_1
+Type: json_schema
+Severity: critical
+Title: TravelOpsResponse Schema
+File: app/schemas.py
+Lines: 63-69
+Code Snippet:
+class TravelOpsResponse(BaseModel):
+    assistant_message: str
+    itinerary: dict
+Description: Main API response structure
+Expected Behavior: All API responses must match this schema
+Test Strategy: Use pydantic.model_validate() to test
+
+CONTRACT 2:
+ID: contract_2
+Type: policy
+Severity: critical
+Title: Never Invent Facts Policy
+File: app/prompting.py
+Lines: 95-97
+Code Snippet:
+# Important policies:
+# - Never invent facts not in the provided context
+Description: LLM must not make up information
+Expected Behavior: Only use facts from knowledge base
+Test Strategy: Check that responses only contain KB facts
+
+[Continue for all contracts found...]
+
+===== SUMMARY =====
+Total Contracts: 12
+Hard Contracts: 5 (schemas, formats, validation)
+Soft Contracts: 7 (policies, behavioral requirements)
+Critical Severity: 8
+High Severity: 3
+Medium Severity: 1
+
+Key Findings: Found JSON schemas for TravelOpsResponse and Itinerary, date format requirements, policies about factual accuracy, and behavioral constraints on LLM behavior.
 ```
 
-**When to Stop:**
-After finding 10-15 contracts, immediately call `emit_structured_result` with the format above.
-
-**Schema:**
-{schema}
-
-**Start now.** Find contracts and use emit_structured_result with proper format.
+**Start now.** Use tools to find contracts, then provide the complete report above.
 """

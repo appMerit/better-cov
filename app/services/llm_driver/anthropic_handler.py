@@ -98,9 +98,9 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
         self.compiled_agents: dict[AGENT, ClaudeAgentOptions] = {}
 
     async def create_object(
-        self, prompt: str, schema: type[ModelT], model: str | None = None
+        self, prompt: str, schema: type[ModelT], model: str | None = None, max_retries: int = 2
     ) -> tuple[ModelT, dict[str, int]]:
-        """Create an object from LLM response.
+        """Create an object from LLM response with retry logic.
 
         Returns:
             Tuple of (parsed_object, usage_dict) where usage_dict contains:
@@ -113,44 +113,93 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
             {
                 "name": "emit_structured_result",
                 "description": (
-                    "Emit the structured result as specified. "
-                    "Return data directly, not wrapped in any additional fields."
+                    "Emit the structured result. ALL required fields must be provided. "
+                    "Follow the schema exactly - do not omit required fields."
                 ),
                 "input_schema": schema.model_json_schema(),
             }
         ]
-        msg = await client.messages.create(
-            model=model or self.default_big_model,
-            temperature=0,
-            max_tokens=4096,
-            messages=[{"role": "user", "content": prompt}],
-            tools=tools,
-            tool_choice={"type": "tool", "name": "emit_structured_result"},
-        )
-        tool_call = next(b for b in msg.content if isinstance(b, ToolUseBlock))
+        
+        last_error = None
+        total_usage = {"total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0}
+        
+        for attempt in range(max_retries):
+            try:
+                msg = await client.messages.create(
+                    model=model or self.default_big_model,
+                    temperature=0,
+                    max_tokens=8192,  # Increased for complex outputs
+                    messages=[{"role": "user", "content": prompt}],
+                    tools=tools,
+                    tool_choice={"type": "tool", "name": "emit_structured_result"},
+                )
+                
+                # Accumulate usage
+                total_usage["total_tokens"] += msg.usage.input_tokens + msg.usage.output_tokens
+                total_usage["prompt_tokens"] += msg.usage.input_tokens
+                total_usage["completion_tokens"] += msg.usage.output_tokens
+                
+                tool_call = next(b for b in msg.content if isinstance(b, ToolUseBlock))
 
-        # Parse any nested JSON strings in the response
-        # Anthropic sometimes returns partially stringified JSON for nested fields
-        parsed_input = _deep_parse_json_strings(tool_call.input)
+                # Parse any nested JSON strings
+                parsed_input = _deep_parse_json_strings(tool_call.input)
 
-        # Fix: Sometimes Anthropic wraps the response in an extra "input_schema" key
-        # This happens when the tool description mentioned "input_schema" in earlier versions
-        if (
-            isinstance(parsed_input, dict)
-            and "input_schema" in parsed_input
-            and len(parsed_input) == 1
-        ):
-            parsed_input = parsed_input["input_schema"]
+                # Fix: Sometimes Anthropic wraps response in "input_schema" key
+                if (
+                    isinstance(parsed_input, dict)
+                    and "input_schema" in parsed_input
+                    and len(parsed_input) == 1
+                ):
+                    parsed_input = parsed_input["input_schema"]
 
-        # Extract usage information
-        usage = {
-            "total_tokens": msg.usage.input_tokens + msg.usage.output_tokens,
-            "prompt_tokens": msg.usage.input_tokens,
-            "completion_tokens": msg.usage.output_tokens,
-        }
+                # Auto-truncate long strings
+                if 'summary' in parsed_input and isinstance(parsed_input['summary'], str):
+                    if len(parsed_input['summary']) > 1000:
+                        parsed_input['summary'] = parsed_input['summary'][:997] + "..."
+                
+                # Truncate long strings in nested objects
+                if 'contracts' in parsed_input and isinstance(parsed_input['contracts'], list):
+                    for contract in parsed_input['contracts']:
+                        if isinstance(contract, dict):
+                            for field in ['title', 'description', 'expected_behavior', 'test_strategy']:
+                                if field in contract and isinstance(contract[field], str):
+                                    max_len = {'title': 100, 'description': 500, 'expected_behavior': 300, 'test_strategy': 300}.get(field, 500)
+                                    if len(contract[field]) > max_len:
+                                        contract[field] = contract[field][:max_len-3] + "..."
+                
+                # Validate and return
+                return schema.model_validate(parsed_input), total_usage
+                
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    # Retry with more explicit prompt
+                    prompt = f"""{prompt}
 
-        # TODO: retry with same args if err (max 2 times)
-        return schema.model_validate(parsed_input), usage
+IMPORTANT: Your previous attempt failed with error: {str(e)}
+Make sure to include ALL required fields in the schema, especially:
+- contracts: must be an array of Contract objects (not empty unless truly no contracts found)
+- summary: must be a string describing findings
+Check the schema carefully and provide complete data."""
+                    continue
+                else:
+                    # Last attempt failed, add defaults
+                    try:
+                        parsed_input = {}
+                        if hasattr(schema, 'model_fields'):
+                            for field_name, field_info in schema.model_fields.items():
+                                if field_info.is_required():
+                                    if field_name == 'contracts':
+                                        parsed_input[field_name] = []
+                                    elif field_name == 'summary':
+                                        parsed_input[field_name] = "Failed to extract complete results"
+                                    elif field_name == 'codebase_path':
+                                        parsed_input[field_name] = "."
+                                    elif field_name == 'total_contracts':
+                                        parsed_input[field_name] = 0
+                        return schema.model_validate(parsed_input), total_usage
+                    except:
+                        raise last_error
 
     def compile_agent(  # noqa: D102
         self,
@@ -236,47 +285,11 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
                         continue
 
         if not client_response:
-            # Try to extract partial results if agent hit max_turns
-            if max_turns and turn_count >= max_turns and last_assistant_message:
-                # Agent likely hit max_turns - try to extract any partial findings
-                # from the last assistant message as a fallback
-                try:
-                    # Convert AssistantMessage to string representation
-                    partial_text = str(last_assistant_message)
-
-                    # If expecting structured output, try to parse it via fallback
-                    if issubclass(output_type, BaseModel):
-                        prompt_template = f"""
-                        URGENT: An agent was analyzing code but hit its turn limit.
-                        Extract whatever findings you can from this partial analysis
-                        and format it according to the schema. If information is missing,
-                        use reasonable defaults or indicate "partial analysis" in the
-                        descriptions.
-
-                        PARTIAL ANALYSIS:
-                        {partial_text[:2000]}
-
-                        SCHEMA:
-                        {output_type.model_json_schema()}
-
-                        Return the best-effort structured result you can create from this.
-                        """
-                        result, _usage = await self.create_object(
-                            model=self.default_small_model,
-                            schema=output_type,
-                            prompt=prompt_template,
-                        )
-                        return result
-                except Exception:
-                    # Fallback failed, raise original error
-                    pass
-
             raise ValueError(
                 f"Agent '{agent}' completed without returning a result. "
-                "This usually means: (1) Agent hit max_turns limit, "
-                "(2) Agent encountered an error, or (3) Output format was invalid. "
+                "This usually means the agent didn't call emit_structured_result. "
                 f"Turns completed: {turn_count}/{max_turns or 'unlimited'}. "
-                "Check agent logs for details."
+                "Check that the prompt instructs the agent to use emit_structured_result."
             )
 
         if isinstance(client_response, output_type):

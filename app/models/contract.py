@@ -76,5 +76,5 @@ class ContractDiscoveryResult(BaseModel):
     )
     
     summary: str = Field(
-        description="High-level summary of discovered contracts (max 500 chars)", max_length=500
+        description="High-level summary of discovered contracts (max 1000 chars)", max_length=1000
     )
