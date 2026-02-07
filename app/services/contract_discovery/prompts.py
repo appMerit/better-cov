@@ -76,32 +76,64 @@ Soft Contracts:
 Use `emit_structured_result` to return your complete analysis.
 """
 
-TASK_TEMPLATE = """Analyze the codebase to discover ALL contracts (explicit and implicit).
+TASK_TEMPLATE = """Analyze the codebase to discover the most important contracts.
 
 **Codebase Entry Point:** {codebase_path}
 
-**Instructions:**
-1. Start by exploring the directory structure using `ls` and `glob`
-2. Find all Python files that likely contain contracts
-3. Use `grep` to search for contract keywords across files
-4. Read each relevant file and extract contracts
-5. For EVERY contract found:
-   - Record exact file path and line numbers
-   - Copy the actual code snippet
-   - Classify as hard or soft contract
-   - Determine severity (critical/high/medium/low)
-   - Describe expected behavior
-   - Suggest test strategy
+**PRIORITY FILES TO CHECK (in order):**
+1. schemas.py, models.py - Pydantic models (HARD contracts)
+2. prompting.py, prompts.py - System prompts (SOFT contracts)
+3. config.py - Configuration constraints
+4. Main application files (agent.py, router.py, etc.)
 
-**Be Thorough:**
-- Check ALL Python files, not just obvious ones
-- Look in prompts, configs, schemas, validators, models
-- Find implicit contracts in comments and docstrings
-- Don't miss constraints in configuration values
-- Identify behavioral requirements in system prompts
+**Efficient Strategy:**
+1. Use `glob` to find: schemas.py, models.py, prompts.py, prompting.py, config.py
+2. Use `grep` for "BaseModel", "class.*BaseModel", "def.*prompt" to locate contracts quickly
+3. Read ONLY the files that contain contracts (don't read every file)
+4. Extract 10-20 key contracts - focus on the most important ones
+
+**For Each Contract:**
+- id: Simple identifier like "contract_1", "contract_2"
+- type: Choose from: json_schema, type_hint, behavioral, policy, constraint, etc.
+- severity: Choose from: critical, high, medium, low
+- title: Short name (e.g., "TravelOpsResponse Schema")
+- description: What this contract defines
+- location: file_path, line_start, line_end, code_snippet (keep snippet short)
+- expected_behavior: What should happen
+- test_strategy: How to verify it works
+
+**CRITICAL - Output Format:**
+You MUST call `emit_structured_result` with this EXACT structure:
+```
+{{
+  "codebase_path": "merit-travelops-demo/app",
+  "total_contracts": 15,
+  "contracts": [
+    {{
+      "id": "contract_1",
+      "type": "json_schema",
+      "severity": "critical",
+      "title": "TravelOpsResponse Schema",
+      "description": "API response must follow this structure",
+      "location": {{
+        "file_path": "schemas.py",
+        "line_start": 63,
+        "line_end": 69,
+        "code_snippet": "class TravelOpsResponse(BaseModel):\\n    assistant_message: str\\n    itinerary: dict"
+      }},
+      "expected_behavior": "All responses must be valid TravelOpsResponse objects",
+      "test_strategy": "Use pydantic validation to test response structure"
+    }}
+  ],
+  "summary": "Found 15 contracts including schemas, policies, and constraints"
+}}
+```
+
+**When to Stop:**
+After finding 10-15 contracts, immediately call `emit_structured_result` with the format above.
 
 **Schema:**
 {schema}
 
-**Start your analysis now.** Use the tools to explore the codebase systematically.
+**Start now.** Find contracts and use emit_structured_result with proper format.
 """

@@ -76,7 +76,7 @@ uv run python run_discovery.py merit-travelops-demo/app --debug
 
 - `codebase_path`: Path to the codebase to analyze (required)
 - `-o, --output`: Path to save results JSON file (default: `contracts_output.json`)
-- `--max-turns`: Maximum turns for agent (default: 100)
+- `--max-turns`: Maximum turns for agent (default: 50)
 - `--quiet`: Suppress progress logging
 - `--debug`: Show detailed debug information
 
@@ -167,14 +167,14 @@ uv run python run_discovery.py merit-travelops-demo/app
 You'll see real-time progress as the agent works:
 ```
 🔍 Starting contract discovery for: merit-travelops-demo/app
-📊 Max turns: 100
+📊 Max turns: 50
 
 🤖 Agent starting analysis...
 
-🔄 Turn 1/100: Agent working...
-🔄 Turn 2/100: Agent working...
+🔄 Turn 1/50: Agent working...
+🔄 Turn 2/50: Agent working...
 ...
-✅ Agent completed in 45 turns
+✅ Agent completed in 25 turns
 ```
 
 Expected findings:

@@ -37,50 +37,31 @@ class CodeLocation(BaseModel):
     file_path: str = Field(description="Relative path to file from repo root")
     line_start: int = Field(description="Starting line number")
     line_end: int = Field(description="Ending line number")
-    code_snippet: str = Field(description="Actual code snippet")
+    code_snippet: str = Field(description="Actual code snippet (max 500 chars)", max_length=500)
 
 
 class Contract(BaseModel):
     """A discovered contract in the codebase."""
 
-    id: str = Field(description="Unique identifier for this contract")
+    id: str = Field(description="Unique identifier (e.g. contract_1, contract_2)")
     type: ContractType = Field(description="Type of contract")
     severity: ContractSeverity = Field(description="Importance level")
     
     # Core information
-    title: str = Field(description="Short descriptive title")
-    description: str = Field(description="Detailed description of the contract")
+    title: str = Field(description="Short descriptive title (max 100 chars)", max_length=100)
+    description: str = Field(description="Detailed description (max 500 chars)", max_length=500)
     
     # Location
     location: CodeLocation = Field(description="Where the contract is defined")
     
     # Contract details
     expected_behavior: str = Field(
-        description="What the system should do to satisfy this contract"
-    )
-    violation_example: str | None = Field(
-        default=None,
-        description="Example of what would violate this contract"
-    )
-    
-    # Context
-    affected_components: list[str] = Field(
-        default_factory=list,
-        description="Which components/modules must adhere to this"
-    )
-    related_contracts: list[str] = Field(
-        default_factory=list,
-        description="IDs of related contracts"
+        description="What the system should do (max 300 chars)", max_length=300
     )
     
     # Testing information
-    testable: bool = Field(
-        default=True,
-        description="Whether this can be automatically tested"
-    )
-    test_strategy: str | None = Field(
-        default=None,
-        description="How to test this contract"
+    test_strategy: str = Field(
+        description="How to test this contract (max 300 chars)", max_length=300
     )
 
 
@@ -91,20 +72,9 @@ class ContractDiscoveryResult(BaseModel):
     total_contracts: int = Field(description="Total number of contracts found")
     
     contracts: list[Contract] = Field(
-        default_factory=list,
-        description="All discovered contracts"
+        description="List of discovered contracts (10-20 contracts)"
     )
     
     summary: str = Field(
-        description="High-level summary of discovered contracts"
-    )
-    
-    # Statistics
-    contracts_by_type: dict[ContractType, int] = Field(
-        default_factory=dict,
-        description="Count of contracts by type"
-    )
-    contracts_by_severity: dict[ContractSeverity, int] = Field(
-        default_factory=dict,
-        description="Count of contracts by severity"
+        description="High-level summary of discovered contracts (max 500 chars)", max_length=500
     )

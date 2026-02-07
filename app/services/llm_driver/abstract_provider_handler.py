@@ -21,11 +21,6 @@ class LLMAbstractHandler(ABC):
     compiled_agents: dict[AGENT, Any]
     default_small_model: str
     default_big_model: str
-    default_embedding_model: str
-
-    @abstractmethod
-    async def generate_embeddings(self, input_values: list[str], model: str | None = None) -> list[list[float]]:
-        pass
 
     @abstractmethod
     async def create_object(

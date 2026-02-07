@@ -16,14 +16,14 @@ load_dotenv()
 
 
 async def run_contract_discovery(
-    codebase_path: str, output_file: str | None = None, max_turns: int = 100, verbose: bool = True, debug: bool = False
+    codebase_path: str, output_file: str | None = None, max_turns: int = 50, verbose: bool = True, debug: bool = False
 ) -> ContractDiscoveryResult:
     """Run contract discovery on a codebase.
 
     Args:
         codebase_path: Path to codebase to analyze (e.g., "merit-travelops-demo/app")
         output_file: Optional path to save results as JSON
-        max_turns: Maximum turns for agent (default: 100)
+        max_turns: Maximum turns for agent (default: 50)
 
     Returns:
         ContractDiscoveryResult with all discovered contracts
@@ -54,13 +54,21 @@ async def run_contract_discovery(
     print(f"\n✅ Total contracts found: {result.total_contracts}")
     print(f"\n📁 Codebase: {result.codebase_path}")
     
-    print("\n📊 By Type:")
-    for contract_type, count in result.contracts_by_type.items():
-        print(f"   - {contract_type}: {count}")
-    
-    print("\n🎯 By Severity:")
-    for severity, count in result.contracts_by_severity.items():
-        print(f"   - {severity}: {count}")
+    # Count by type and severity from actual contracts
+    if result.contracts:
+        type_counts = {}
+        severity_counts = {}
+        for contract in result.contracts:
+            type_counts[contract.type.value] = type_counts.get(contract.type.value, 0) + 1
+            severity_counts[contract.severity.value] = severity_counts.get(contract.severity.value, 0) + 1
+        
+        print("\n📊 By Type:")
+        for contract_type, count in type_counts.items():
+            print(f"   - {contract_type}: {count}")
+        
+        print("\n🎯 By Severity:")
+        for severity, count in severity_counts.items():
+            print(f"   - {severity}: {count}")
     
     print(f"\n📝 Summary:\n{result.summary}")
 
@@ -108,8 +116,8 @@ async def main():
     parser.add_argument(
         "--max-turns",
         type=int,
-        default=100,
-        help="Maximum turns for agent (default: 100)",
+        default=50,
+        help="Maximum turns for agent (default: 50)",
     )
     parser.add_argument(
         "--quiet",

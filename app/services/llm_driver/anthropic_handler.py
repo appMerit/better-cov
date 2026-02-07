@@ -66,7 +66,6 @@ def _deep_parse_json_strings(obj: Any) -> Any:
 class LLMClaude(LLMAbstractHandler):  # noqa: D101
     default_small_model = "claude-haiku-4-5"
     default_big_model = "claude-sonnet-4-5"
-    default_embedding_model = "text-embedding-3-small"
     standard_tools_map = {
         TOOL.READ: "Read",
         TOOL.WRITE: "Write",
@@ -97,18 +96,6 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
     ):
         self.client = client
         self.compiled_agents: dict[AGENT, ClaudeAgentOptions] = {}
-
-    async def generate_embeddings(
-        self, input_values: list[str], model: str | None = None
-    ) -> list[list[float]]:  # noqa: D102
-        """Generate embeddings using OpenAI text-embedding-3-small."""
-        from openai import AsyncOpenAI
-
-        openai_client = AsyncOpenAI()
-        response = await openai_client.embeddings.create(
-            model=model or "text-embedding-3-small", input=input_values
-        )
-        return [item.embedding for item in response.data]
 
     async def create_object(
         self, prompt: str, schema: type[ModelT], model: str | None = None
@@ -227,20 +214,25 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
         async with ClaudeSDKClient(options=options) as client:
             await client.query(task)
             async for message in client.receive_response():
+                if verbose:
+                    # Debug: show all message types
+                    msg_type = type(message).__name__
+                    
                 match message:
                     case AssistantMessage():
                         turn_count += 1
                         last_assistant_message = message
                         if verbose:
-                            # Show turn progress
-                            print(f"🔄 Turn {turn_count}/{max_turns or '∞'}: Agent working...")
+                            print(f"🔄 Turn {turn_count}/{max_turns or '∞'}: Agent thinking...")
                         continue
                     case ResultMessage(result=res):
                         client_response = res
                         if verbose:
                             print(f"✅ Agent completed in {turn_count} turns")
                     case _:
-                        # Handle other message types silently
+                        # Log other message types to help debug
+                        if verbose:
+                            print(f"   📨 {msg_type}")
                         continue
 
         if not client_response:
