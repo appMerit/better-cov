@@ -96,11 +96,10 @@ ContractObligation Required Fields:
 - id: Like "contract.api-response.v1"
 - version: "1.0.0"
 - name: Optional display name
-- target_agents: ["*"] or specific agents
 - task_context: TaskContext(goal="...", inputs={{}}, constraints=[])
 - output_contract: OutputContract(format="json"|"markdown"|"text"|"code_patch", schema_definition={{}}, required_fields=[])
 - obligations: list[ObligationRule] - at least 1
-- acceptance_policy: AcceptancePolicy(require_all_hard_obligations=true, block_on=["critical"], use_weighted_scoring=true, min_weighted_score=0.9)
+- acceptance_policy: AcceptancePolicy(require_all_hard_obligations=true, block_on=["critical"])
 
 ObligationRule Required Fields:
 - id: Like "OBL-001"
@@ -108,11 +107,8 @@ ObligationRule Required Fields:
 - applies_to: ["all"] or ["final_response"] etc.
 - rule: Machine-readable condition
 - validator: "jsonschema" | "deterministic_check" | "test_command" | "rubric" | "manual"
-- enforcement: "hard" | "soft"
-- severity: "critical" | "major" | "minor"
-- weight: 1.0 (default)
-- code_location: Optional "file.py:10-20"
-- code_snippet: Optional code text
+- enforcement: "hard" | "soft" (default: "hard")
+- severity: "critical" | "major" | "minor" (default: "major")
 
 CRITICAL Requirements:
 - codebase_path: "{codebase_path}"

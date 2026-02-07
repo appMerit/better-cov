@@ -72,7 +72,6 @@ async def main():
         print(f"   ID: {contract.id}")
         print(f"   Goal: {contract.task_context.goal}")
         print(f"   Output Format: {contract.output_contract.format}")
-        print(f"   Target Agents: {', '.join(contract.target_agents)}")
         print(f"   Obligations: {len(contract.obligations)}")
         
         for j, obl in enumerate(contract.obligations[:3], 1):
@@ -81,8 +80,6 @@ async def main():
             print(f"         Enforcement: {obl.enforcement}")
             print(f"         Severity: {obl.severity}")
             print(f"         Rule: {obl.rule[:100]}...")
-            if obl.code_location:
-                print(f"         Location: {obl.code_location}")
     
     # Show acceptance policies
     print(f"\n{'='*80}")
@@ -93,10 +90,7 @@ async def main():
         policy = contract.acceptance_policy
         print(f"\n{contract.name or contract.id}:")
         print(f"  - Require all hard obligations: {policy.require_all_hard_obligations}")
-        print(f"  - Block on severities: {', '.join(policy.block_on)}")
-        print(f"  - Use weighted scoring: {policy.use_weighted_scoring}")
-        if policy.use_weighted_scoring:
-            print(f"  - Min weighted score: {policy.min_weighted_score}")
+        print(f"  - Block on severities: {', '.join(str(s) for s in policy.block_on)}")
 
 
 if __name__ == "__main__":

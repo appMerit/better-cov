@@ -1,4 +1,8 @@
-"""Contract models for representing discovered contracts in a codebase."""
+"""Minimal contract models for AI output obligations.
+
+This is a narrow v1 focused on contract definition and validation.
+Runtime orchestration and audit concerns are intentionally out of scope.
+"""
 
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ class ValidatorKind(StrEnum):
 
 
 class EnforcementLevel(StrEnum):
-    """Hard rules gate acceptance; soft rules contribute to score."""
+    """Hard rules gate acceptance; soft rules are non-blocking expectations."""
 
     HARD = "hard"
     SOFT = "soft"
@@ -111,31 +115,15 @@ class ObligationRule(BaseModel):
     description: str = Field(description="Human-readable explanation of the requirement.")
     applies_to: list[str] = Field(
         min_length=1,
-        description="Targets affected by this rule (e.g., 'all', 'final_response', 'module:x').",
+        description="Targets affected by this rule (for example `all`, `final_response`, `module:x`).",
     )
     rule: str = Field(description="Machine-checkable condition or rubric statement.")
-    validator: ValidatorKind = Field(description="Validator type used to evaluate rule.")
+    validator: ValidatorKind = Field(description="Validator type used to evaluate `rule`.")
     enforcement: EnforcementLevel = Field(
         default=EnforcementLevel.HARD,
-        description="Hard rules gate acceptance; soft rules are score-based.",
+        description="Hard rules gate acceptance; soft rules are non-blocking expectations.",
     )
     severity: Severity = Field(default=Severity.MAJOR, description="Impact when the rule fails.")
-    weight: float = Field(
-        default=1.0,
-        gt=0,
-        le=1,
-        description="Relative contribution when weighted scoring is enabled.",
-    )
-    
-    # Additional context for discovered contracts
-    code_location: str | None = Field(
-        default=None,
-        description="File path and line numbers where this rule is defined (e.g., 'schemas.py:63-69')"
-    )
-    code_snippet: str | None = Field(
-        default=None,
-        description="Actual code that defines or implies this rule"
-    )
 
     @field_validator("id", "description", "rule")
     @classmethod
@@ -169,16 +157,6 @@ class AcceptancePolicy(BaseModel):
         default_factory=lambda: {Severity.CRITICAL},
         description="Failed obligations at these severities always block acceptance.",
     )
-    use_weighted_scoring: bool = Field(
-        default=True,
-        description="If true, evaluate weighted soft-rule scoring.",
-    )
-    min_weighted_score: float = Field(
-        default=0.9,
-        ge=0,
-        le=1,
-        description="Minimum weighted score required when scoring is enabled.",
-    )
 
 
 class ContractObligation(BaseModel):
@@ -189,11 +167,6 @@ class ContractObligation(BaseModel):
     id: str = Field(description="Stable contract identifier.")
     version: str = Field(description="Contract version string.")
     name: str | None = Field(default=None, description="Optional display name.")
-    target_agents: list[str] = Field(
-        default_factory=lambda: ["*"],
-        min_length=1,
-        description="Agents/models this contract applies to; '*' means all.",
-    )
     task_context: TaskContext = Field(description="Task framing context.")
     output_contract: OutputContract = Field(description="Output format/schema requirements.")
     obligations: list[ObligationRule] = Field(
@@ -223,16 +196,6 @@ class ContractObligation(BaseModel):
             raise ValueError("name must not be blank")
         return value
 
-    @field_validator("target_agents")
-    @classmethod
-    def target_agents_must_be_non_empty_and_unique(cls, values: list[str]) -> list[str]:
-        normalized = [value.strip() for value in values]
-        if any(not value for value in normalized):
-            raise ValueError("target_agents entries must not be blank")
-        if len(set(normalized)) != len(normalized):
-            raise ValueError("target_agents entries must be unique")
-        return normalized
-
     @model_validator(mode="after")
     def obligation_ids_must_be_unique(self) -> "ContractObligation":
         obligation_ids = [obligation.id for obligation in self.obligations]
@@ -253,7 +216,7 @@ class ContractDiscoveryResult(BaseModel):
     total_contracts: int = Field(description="Total number of contracts found")
     
     contracts: list[ContractObligation] = Field(
-        description="List of discovered contract obligations (10-20 contracts)"
+        description="List of discovered contract obligations (8-15 contracts)"
     )
     
     summary: str = Field(

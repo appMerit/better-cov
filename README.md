@@ -100,7 +100,6 @@ The tool outputs a `ContractDiscoveryResult` JSON file with executable `Contract
       "id": "contract.api-response.v1",
       "version": "1.0.0",
       "name": "API Response Contract",
-      "target_agents": ["*"],
       "task_context": {
         "goal": "Return structured travel planning response",
         "inputs": {},
@@ -119,27 +118,12 @@ The tool outputs a `ContractDiscoveryResult` JSON file with executable `Contract
           "rule": "pydantic_validate(response, TravelOpsResponse) == success",
           "validator": "jsonschema",
           "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "schemas.py:63-69",
-          "code_snippet": "class TravelOpsResponse(BaseModel): ..."
-        },
-        {
-          "id": "OBL-002",
-          "description": "All required fields must be present",
-          "applies_to": ["final_response"],
-          "rule": "check all required fields in dict",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0
+          "severity": "critical"
         }
       ],
       "acceptance_policy": {
         "require_all_hard_obligations": true,
-        "block_on": ["critical"],
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.9
+        "block_on": ["critical"]
       }
     }
   ],

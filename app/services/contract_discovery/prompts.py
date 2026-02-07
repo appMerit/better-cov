@@ -114,17 +114,14 @@ CONTRACT 1: API Response Contract
 ID: contract.api-response.v1
 Version: 1.0.0
 Name: TravelOps API Response Contract
-Target Agents: ["*"]
 Task Context:
   - Goal: Return structured travel planning response
   - Inputs: {{}}
   - Constraints: ["Must be valid JSON", "Must include all required fields"]
 Output Contract:
   - Format: json
-  - Schema File: schemas.py:63-69
   - Required Fields: ["assistant_message", "itinerary", "session_id"]
-  - Schema Definition: {{TravelOpsResponse Pydantic model}}
-Acceptance Policy: (use defaults)
+Acceptance Policy: (use defaults: require_all_hard_obligations=true, block_on=[critical])
 
 OBLIGATIONS:
 1. OBL-001: TravelOpsResponse Schema Validation
@@ -134,8 +131,6 @@ OBLIGATIONS:
    Validator: jsonschema
    Enforcement: hard
    Severity: critical
-   Code Location: schemas.py:63-69
-   Code Snippet: class TravelOpsResponse(BaseModel): assistant_message: str; itinerary: dict; session_id: str
    
 NOTE: This ONE jsonschema obligation covers:
 - All required fields present (assistant_message, itinerary, session_id)
@@ -147,7 +142,6 @@ CONTRACT 2: Date Format Contract
 ID: contract.date-format.v1
 Version: 1.0.0
 Name: ISO 8601 Date Format Requirement
-Target Agents: ["*"]
 Task Context:
   - Goal: Ensure all dates use consistent YYYY-MM-DD format
   - Constraints: ["Must match ISO 8601 YYYY-MM-DD pattern"]
@@ -162,14 +156,11 @@ OBLIGATIONS:
    Validator: deterministic_check
    Enforcement: hard
    Severity: critical
-   Code Location: schemas.py:15-20
-   Code Snippet: start_date: str  # YYYY-MM-DD format
 
 CONTRACT 3: LLM Safety and Accuracy Contract  
 ID: contract.llm-safety.v1
 Version: 1.0.0
 Name: LLM Safety and Factual Accuracy Requirements
-Target Agents: ["*"]
 Task Context:
   - Goal: Ensure LLM produces safe, accurate, grounded responses
   - Constraints: ["Never fabricate facts", "Always use knowledge base", "Cite sources"]
@@ -184,8 +175,6 @@ OBLIGATIONS:
    Validator: rubric
    Enforcement: hard
    Severity: critical
-   Code Location: prompting.py:95-96
-   Code Snippet: "Never invent facts not in the provided context"
 
 2. OBL-004: Source Citation
    Description: When stating facts, reference the knowledge base source
@@ -194,14 +183,11 @@ OBLIGATIONS:
    Validator: rubric
    Enforcement: soft
    Severity: major
-   Code Location: prompting.py:96
-   Code Snippet: "Always cite knowledge base when referencing policies or facts"
 
 CONTRACT 4: Configuration Constraints
 ID: contract.config-constraints.v1
 Version: 1.0.0
 Name: Agent Configuration Parameter Constraints
-Target Agents: ["*"]
 Task Context:
   - Goal: Ensure agent configuration stays within safe bounds
   - Constraints: ["Temperature must be 0-1", "Max steps must be positive"]
@@ -216,8 +202,6 @@ OBLIGATIONS:
    Validator: deterministic_check
    Enforcement: hard
    Severity: critical
-   Code Location: config.py:10
-   Code Snippet: temperature: float = 0.0
 
 2. OBL-006: Max Steps Positive
    Description: max_agent_steps must be a positive integer
@@ -226,8 +210,6 @@ OBLIGATIONS:
    Validator: deterministic_check
    Enforcement: hard
    Severity: major
-   Code Location: config.py:12
-   Code Snippet: max_agent_steps: int = 5
 
 [Continue for 8-12 contracts total...]
 

@@ -1,21 +1,18 @@
 {
   "codebase_path": "/Users/mreith/Marks_Code/Merit/better-cov/merit-travelops-demo/app",
-  "total_contracts": 12,
+  "total_contracts": 10,
   "contracts": [
     {
       "id": "contract.api-response.v1",
       "version": "1.0.0",
       "name": "TravelOps API Response Contract",
-      "target_agents": [
-        "*"
-      ],
       "task_context": {
-        "goal": "Return structured travel planning response with valid JSON format",
+        "goal": "Return structured travel planning response with complete itinerary",
         "inputs": {},
         "constraints": [
           "Must be valid JSON",
           "Must include all required fields",
-          "Must validate against TravelOpsResponse schema"
+          "Must match TravelOpsResponse schema"
         ]
       },
       "output_contract": {
@@ -30,39 +27,32 @@
       "obligations": [
         {
           "id": "OBL-001",
-          "description": "Response must fully validate against TravelOpsResponse Pydantic model (includes all fields, types, constraints)",
+          "description": "Response must fully validate against TravelOpsResponse Pydantic model (includes all required fields, correct types, and any Field() validators)",
           "applies_to": [
             "final_response"
           ],
-          "rule": "TravelOpsResponse.model_validate(response) succeeds with all required fields (assistant_message: str, itinerary: dict, session_id: str)",
+          "rule": "TravelOpsResponse.model_validate(response) succeeds without ValidationError",
           "validator": "jsonschema",
           "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "schemas.py:63-69",
-          "code_snippet": "class TravelOpsResponse(BaseModel):\n    assistant_message: str\n    itinerary: dict[str, Any]\n    session_id: str"
+          "severity": "critical"
         }
       ],
       "acceptance_policy": {
         "require_all_hard_obligations": true,
-        "block_on": "{<Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.9
+        "block_on": "{<Severity.CRITICAL: 'critical'>}"
       }
     },
     {
       "id": "contract.itinerary-schema.v1",
       "version": "1.0.0",
-      "name": "Itinerary Structure Contract",
-      "target_agents": [
-        "*"
-      ],
+      "name": "Itinerary Data Model Contract",
       "task_context": {
         "goal": "Ensure itinerary data structure is valid and complete",
         "inputs": {},
         "constraints": [
-          "Must validate against Itinerary Pydantic model",
-          "Must include destination and dates"
+          "Must include destination and dates",
+          "Nested objects must be valid",
+          "Lists must contain valid objects"
         ]
       },
       "output_contract": {
@@ -79,38 +69,31 @@
       "obligations": [
         {
           "id": "OBL-002",
-          "description": "Itinerary must fully validate against Itinerary Pydantic model with all required nested structures",
+          "description": "Itinerary must fully validate against Itinerary Pydantic model (includes Location, DateRange, FlightInfo, HotelInfo, Activity nested models)",
           "applies_to": [
             "itinerary"
           ],
-          "rule": "Itinerary.model_validate(itinerary) succeeds with destination (Location), dates (DateRange), flights (list[FlightInfo]), hotels (list[HotelInfo]), activities (list[Activity])",
+          "rule": "Itinerary.model_validate(itinerary_data) succeeds without ValidationError",
           "validator": "jsonschema",
           "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "schemas.py:51-61",
-          "code_snippet": "class Itinerary(BaseModel):\n    destination: Location\n    dates: DateRange\n    flights: list[FlightInfo] = Field(default_factory=list)\n    hotels: list[HotelInfo] = Field(default_factory=list)\n    activities: list[Activity] = Field(default_factory=list)\n    budget: float | None = None\n    notes: str | None = None"
+          "severity": "critical"
         }
       ],
       "acceptance_policy": {
         "require_all_hard_obligations": true,
-        "block_on": "{<Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.9
+        "block_on": "{<Severity.CRITICAL: 'critical'>}"
       }
     },
     {
       "id": "contract.date-format.v1",
       "version": "1.0.0",
-      "name": "ISO 8601 Date Format Contract",
-      "target_agents": [
-        "*"
-      ],
+      "name": "ISO 8601 Date Format Requirement",
       "task_context": {
         "goal": "Ensure all dates use consistent YYYY-MM-DD format",
         "inputs": {},
         "constraints": [
-          "Must match ISO 8601 YYYY-MM-DD pattern"
+          "Must match ISO 8601 YYYY-MM-DD pattern",
+          "Applies to all date fields in schemas and tool outputs"
         ]
       },
       "output_contract": {
@@ -121,68 +104,32 @@
       "obligations": [
         {
           "id": "OBL-003",
-          "description": "All date strings in DateRange (start_date, end_date) must match YYYY-MM-DD format",
+          "description": "All date strings must match YYYY-MM-DD format (ISO 8601) as specified in schemas.py lines 18-19, 27, 37-38, 47",
           "applies_to": [
-            "dates"
+            "all"
           ],
-          "rule": "re.match(r'^\\d{4}-\\d{2}-\\d{2}$', date_string) is not None for all date fields",
+          "rule": "re.match(r'^\\d{4}-\\d{2}-\\d{2}$', date_string) is not None",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "schemas.py:15-19",
-          "code_snippet": "class DateRange(BaseModel):\n    start_date: str  # YYYY-MM-DD format\n    end_date: str  # YYYY-MM-DD format"
-        },
-        {
-          "id": "OBL-004",
-          "description": "Flight dates must match YYYY-MM-DD format",
-          "applies_to": [
-            "flights"
-          ],
-          "rule": "re.match(r'^\\d{4}-\\d{2}-\\d{2}$', flight.date) is not None for all flights",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "schemas.py:22-30",
-          "code_snippet": "class FlightInfo(BaseModel):\n    date: str"
-        },
-        {
-          "id": "OBL-005",
-          "description": "Hotel check-in and check-out dates must match YYYY-MM-DD format",
-          "applies_to": [
-            "hotels"
-          ],
-          "rule": "re.match(r'^\\d{4}-\\d{2}-\\d{2}$', date) is not None for check_in and check_out",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "schemas.py:32-40",
-          "code_snippet": "class HotelInfo(BaseModel):\n    check_in: str\n    check_out: str"
+          "severity": "critical"
         }
       ],
       "acceptance_policy": {
         "require_all_hard_obligations": true,
-        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.9
+        "block_on": "{<Severity.CRITICAL: 'critical'>}"
       }
     },
     {
       "id": "contract.llm-safety.v1",
       "version": "1.0.0",
-      "name": "LLM Safety and Factual Accuracy Contract",
-      "target_agents": [
-        "*"
-      ],
+      "name": "LLM Safety and Factual Accuracy Requirements",
       "task_context": {
         "goal": "Ensure LLM produces safe, accurate, grounded responses",
         "inputs": {},
         "constraints": [
           "Never fabricate facts",
           "Always use knowledge base",
-          "Cite sources"
+          "Cite sources for factual claims"
         ]
       },
       "output_contract": {
@@ -192,68 +139,44 @@
       },
       "obligations": [
         {
-          "id": "OBL-006",
-          "description": "LLM must only use facts from provided knowledge base context, never invent information",
+          "id": "OBL-004",
+          "description": "LLM must only use facts from provided knowledge base, never invent information (prompting.py line 95: 'Never invent facts not in the provided context')",
           "applies_to": [
             "all"
           ],
-          "rule": "All factual claims about visa requirements, tipping, weather, budget, transport are grounded in knowledge base context documents",
+          "rule": "All factual claims in assistant_message are grounded in provided context documents from knowledge base",
           "validator": "rubric",
           "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "prompting.py:95",
-          "code_snippet": "Important policies:\n- Never invent facts not in the provided context"
+          "severity": "critical"
         },
         {
-          "id": "OBL-007",
-          "description": "When stating facts, reference the knowledge base source",
+          "id": "OBL-005",
+          "description": "When stating facts, reference the knowledge base source (prompting.py line 96: 'Always cite knowledge base when referencing policies or facts')",
           "applies_to": [
             "all"
           ],
-          "rule": "Factual statements about policies, visa requirements, cultural norms include knowledge base citations or references",
+          "rule": "Factual statements include knowledge base citations or references",
           "validator": "rubric",
           "enforcement": "soft",
-          "severity": "major",
-          "weight": 0.7,
-          "code_location": "prompting.py:96",
-          "code_snippet": "- Always cite knowledge base when referencing policies or facts"
-        },
-        {
-          "id": "OBL-008",
-          "description": "Only provide information from the provided context documents",
-          "applies_to": [
-            "all"
-          ],
-          "rule": "Response only uses information present in context_docs passed to build_messages function",
-          "validator": "rubric",
-          "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "prompting.py:74-76",
-          "code_snippet": "- Provide accurate information based on provided context\n- Only use information from the provided knowledge base"
+          "severity": "major"
         }
       ],
       "acceptance_policy": {
         "require_all_hard_obligations": true,
-        "block_on": "{<Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.85
+        "block_on": "{<Severity.CRITICAL: 'critical'>}"
       }
     },
     {
       "id": "contract.config-constraints.v1",
       "version": "1.0.0",
       "name": "Agent Configuration Parameter Constraints",
-      "target_agents": [
-        "*"
-      ],
       "task_context": {
         "goal": "Ensure agent configuration stays within safe bounds",
         "inputs": {},
         "constraints": [
           "Temperature must be 0-1",
-          "Max steps must be positive"
+          "Max steps must be positive",
+          "Valid LLM provider"
         ]
       },
       "output_contract": {
@@ -263,125 +186,104 @@
       },
       "obligations": [
         {
-          "id": "OBL-009",
-          "description": "Temperature parameter must be between 0.0 and 1.0",
+          "id": "OBL-006",
+          "description": "Temperature parameter must be between 0.0 and 1.0 (config.py line 22, llm_client.py line 182)",
           "applies_to": [
-            "config"
+            "all"
           ],
           "rule": "0.0 <= config.temperature <= 1.0",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "config.py:22",
-          "code_snippet": "temperature: float = 0.0"
+          "severity": "critical"
         },
         {
-          "id": "OBL-010",
-          "description": "max_agent_steps must be a positive integer",
+          "id": "OBL-007",
+          "description": "max_agent_steps must be a positive integer (config.py line 23, agent.py line 148)",
           "applies_to": [
-            "config"
+            "all"
           ],
           "rule": "config.max_agent_steps > 0 and isinstance(config.max_agent_steps, int)",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "config.py:23",
-          "code_snippet": "max_agent_steps: int = 5"
+          "severity": "major"
         },
         {
-          "id": "OBL-011",
-          "description": "LLM provider must be 'stub' or 'openai'",
+          "id": "OBL-008",
+          "description": "LLM provider must be either 'stub' or 'openai' (config.py line 21, llm_client.py line 225)",
           "applies_to": [
-            "config"
+            "all"
           ],
-          "rule": "config.llm_provider in ['stub', 'openai']",
+          "rule": "config.llm_provider.lower() in ['stub', 'openai']",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "config.py:21",
-          "code_snippet": "llm_provider: str = \"stub\"  # \"stub\" or \"openai\""
+          "severity": "major"
         }
       ],
       "acceptance_policy": {
         "require_all_hard_obligations": true,
-        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.9
+        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}"
       }
     },
     {
-      "id": "contract.json-output.v1",
+      "id": "contract.output-format.v1",
       "version": "1.0.0",
       "name": "JSON Output Format Contract",
-      "target_agents": [
-        "*"
-      ],
       "task_context": {
-        "goal": "Ensure LLM always outputs valid JSON",
+        "goal": "Ensure LLM always produces valid JSON in expected format",
         "inputs": {},
         "constraints": [
-          "Must be parseable JSON",
-          "Must follow specified structure"
+          "Must be valid JSON",
+          "Must match expected structure",
+          "OpenAI uses JSON mode"
         ]
       },
       "output_contract": {
         "format": "json",
         "schema_definition": {},
-        "required_fields": []
+        "required_fields": [
+          "assistant_message",
+          "itinerary"
+        ]
       },
       "obligations": [
         {
-          "id": "OBL-012",
-          "description": "LLM output must be valid, parseable JSON",
+          "id": "OBL-009",
+          "description": "LLM output must be valid JSON (prompting.py line 80: 'Always respond with valid JSON')",
           "applies_to": [
-            "llm_output"
+            "llm_response"
           ],
-          "rule": "json.loads(llm_response.content) succeeds without JSONDecodeError",
+          "rule": "json.loads(llm_output) succeeds without JSONDecodeError",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "prompting.py:79-92",
-          "code_snippet": "Output format:\nAlways respond with valid JSON containing:\n{\n  \"assistant_message\": \"Your natural language response\",\n  \"itinerary\": {...}\n}"
+          "severity": "critical"
         },
         {
-          "id": "OBL-013",
-          "description": "OpenAI client must use JSON mode when not using tools",
+          "id": "OBL-010",
+          "description": "OpenAI requests must use JSON mode via response_format parameter (llm_client.py line 183)",
           "applies_to": [
-            "openai_client"
+            "openai_calls"
           ],
-          "rule": "kwargs['response_format'] == {'type': 'json_object'} when tools is None",
+          "rule": "kwargs['response_format'] == {'type': 'json_object'} when tools not used",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.9,
-          "code_location": "llm_client.py:183",
-          "code_snippet": "\"response_format\": {\"type\": \"json_object\"},  # Force JSON output"
+          "severity": "major"
         }
       ],
       "acceptance_policy": {
         "require_all_hard_obligations": true,
-        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.9
+        "block_on": "{<Severity.CRITICAL: 'critical'>}"
       }
     },
     {
-      "id": "contract.tool-execution.v1",
+      "id": "contract.knowledge-base.v1",
       "version": "1.0.0",
-      "name": "Tool Execution Contract",
-      "target_agents": [
-        "*"
-      ],
+      "name": "Knowledge Base Usage Contract",
       "task_context": {
-        "goal": "Ensure tools are called with valid parameters and handle errors gracefully",
+        "goal": "Ensure knowledge base is properly used for contextual information",
         "inputs": {},
         "constraints": [
-          "Tool calls must include required parameters",
-          "Errors must be caught and logged"
+          "Only use provided context",
+          "Respect user preferences from session memory"
         ]
       },
       "output_contract": {
@@ -391,423 +293,171 @@
       },
       "obligations": [
         {
-          "id": "OBL-014",
-          "description": "get_weather tool must receive a valid location parameter",
+          "id": "OBL-011",
+          "description": "Agent must use tools for real-time data (prompting.py line 97: 'Use tools for real-time data (weather, availability)')",
           "applies_to": [
-            "tools"
+            "all"
           ],
-          "rule": "location parameter is not None and isinstance(location, str) when calling get_weather",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "agent.py:106-109",
-          "code_snippet": "if tool_name == \"get_weather\":\n    location = self._extract_location(prompt)\n    result = get_weather(location)"
+          "rule": "When prompt requests weather, flights, or hotels, corresponding tool must be invoked",
+          "validator": "rubric",
+          "enforcement": "soft",
+          "severity": "major"
         },
         {
-          "id": "OBL-015",
-          "description": "search_flights must receive from_location, to_location, and date parameters",
+          "id": "OBL-012",
+          "description": "Agent must respect user preferences from session memory (prompting.py line 98)",
           "applies_to": [
-            "tools"
+            "all"
           ],
-          "rule": "all([from_location, to_location, date]) are not None when calling search_flights",
+          "rule": "Responses incorporate preferences from session_memory when available (budget, seat preferences, etc.)",
+          "validator": "rubric",
+          "enforcement": "soft",
+          "severity": "minor"
+        }
+      ],
+      "acceptance_policy": {
+        "require_all_hard_obligations": false,
+        "block_on": "{<Severity.CRITICAL: 'critical'>}"
+      }
+    },
+    {
+      "id": "contract.retrieval-routing.v1",
+      "version": "1.0.0",
+      "name": "Intelligent Routing Contract",
+      "task_context": {
+        "goal": "Route requests appropriately to retrieval and tools",
+        "inputs": {},
+        "constraints": [
+          "Retrieval for policy/requirement questions",
+          "Tools for real-time data"
+        ]
+      },
+      "output_contract": {
+        "format": "json",
+        "schema_definition": {},
+        "required_fields": []
+      },
+      "obligations": [
+        {
+          "id": "OBL-013",
+          "description": "Routing must trigger retrieval for policy keywords (router.py lines 19-30)",
+          "applies_to": [
+            "routing"
+          ],
+          "rule": "When prompt contains keywords ['visa', 'tipping', 'culture', 'budget', 'policy', 'requirement', 'custom'], needs_retrieval must be True",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "tools/flights.py:8-10",
-          "code_snippet": "def search_flights(\n    from_location: str, to_location: str, date: str, budget: str | None = None\n) -> dict[str, Any]:"
+          "severity": "major"
+        },
+        {
+          "id": "OBL-014",
+          "description": "Routing must trigger appropriate tools based on request (router.py lines 14-38)",
+          "applies_to": [
+            "routing"
+          ],
+          "rule": "Weather keywords \u2192 get_weather tool; Hotel keywords \u2192 search_hotels tool; Flight keywords \u2192 search_flights tool",
+          "validator": "deterministic_check",
+          "enforcement": "hard",
+          "severity": "major"
+        }
+      ],
+      "acceptance_policy": {
+        "require_all_hard_obligations": true,
+        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}"
+      }
+    },
+    {
+      "id": "contract.tool-output.v1",
+      "version": "1.0.0",
+      "name": "Tool Output Format Contract",
+      "task_context": {
+        "goal": "Ensure all tools return consistent structured data",
+        "inputs": {},
+        "constraints": [
+          "Must return dict with required keys",
+          "Date formats must be consistent"
+        ]
+      },
+      "output_contract": {
+        "format": "json",
+        "schema_definition": {},
+        "required_fields": []
+      },
+      "obligations": [
+        {
+          "id": "OBL-015",
+          "description": "get_weather tool must return dict with required keys (weather.py lines 18-25)",
+          "applies_to": [
+            "tool:get_weather"
+          ],
+          "rule": "Result contains keys: ['location', 'date', 'temperature', 'condition', 'humidity', 'wind_speed']",
+          "validator": "deterministic_check",
+          "enforcement": "hard",
+          "severity": "major"
         },
         {
           "id": "OBL-016",
-          "description": "search_hotels must receive location, check_in, and check_out parameters",
+          "description": "search_hotels tool must return dict with required structure (hotels.py lines 52-58)",
           "applies_to": [
-            "tools"
+            "tool:search_hotels"
           ],
-          "rule": "all([location, check_in, check_out]) are not None when calling search_hotels",
+          "rule": "Result contains keys: ['location', 'check_in', 'check_out', 'hotels', 'count'] and hotels is list",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "tools/hotels.py:8-10",
-          "code_snippet": "def search_hotels(\n    location: str, check_in: str, check_out: str, budget: str | None = None\n) -> dict[str, Any]:"
+          "severity": "major"
         },
         {
           "id": "OBL-017",
-          "description": "Tool execution errors must be caught and returned as error results, not crash the agent",
+          "description": "search_flights tool must return dict with required structure (flights.py lines 61-67)",
           "applies_to": [
-            "tools"
+            "tool:search_flights"
           ],
-          "rule": "try/except block catches exceptions and returns {\"tool_name\": tool_name, \"output\": f\"Error: {str(e)}\"} instead of raising",
+          "rule": "Result contains keys: ['from', 'to', 'date', 'flights', 'count'] and flights is list",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "agent.py:125-127",
-          "code_snippet": "except Exception as e:\n    # Log error but continue\n    results.append({\"tool_name\": tool_name, \"output\": f\"Error: {str(e)}\"})"
+          "severity": "major"
         }
       ],
       "acceptance_policy": {
         "require_all_hard_obligations": true,
-        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.85
+        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}"
       }
     },
     {
-      "id": "contract.routing-logic.v1",
+      "id": "contract.agent-termination.v1",
       "version": "1.0.0",
-      "name": "Request Routing Logic Contract",
-      "target_agents": [
-        "*"
-      ],
+      "name": "Agent Termination Policy",
       "task_context": {
-        "goal": "Correctly route requests to appropriate tools and retrieval systems",
+        "goal": "Prevent infinite loops by enforcing max steps",
         "inputs": {},
         "constraints": [
-          "Must detect when retrieval is needed",
-          "Must detect when tools are needed"
+          "Must respect max_agent_steps configuration",
+          "Must track step count"
         ]
       },
       "output_contract": {
-        "format": "json",
+        "format": "text",
         "schema_definition": {},
         "required_fields": []
       },
       "obligations": [
         {
           "id": "OBL-018",
-          "description": "Router must set needs_retrieval=True for queries about visa, tipping, culture, budget, policy, requirement, custom",
+          "description": "Agent must stop when max_agent_steps is reached (agent.py lines 148-150)",
           "applies_to": [
-            "router"
+            "agent_loop"
           ],
-          "rule": "routing_decision['needs_retrieval'] == True when any keyword in ['visa', 'tipping', 'culture', 'budget', 'policy', 'requirement', 'custom'] appears in prompt.lower()",
-          "validator": "deterministic_check",
-          "enforcement": "soft",
-          "severity": "major",
-          "weight": 0.7,
-          "code_location": "router.py:19-30",
-          "code_snippet": "needs_retrieval = any(\n    keyword in prompt_lower\n    for keyword in [\n        \"visa\",\n        \"tipping\",\n        \"culture\",\n        \"budget\",\n        \"policy\",\n        \"requirement\",\n        \"custom\",\n    ]\n)"
-        },
-        {
-          "id": "OBL-019",
-          "description": "Router must include get_weather in tools_needed when 'weather' appears in prompt",
-          "applies_to": [
-            "router"
-          ],
-          "rule": "'get_weather' in routing_decision['tools'] when 'weather' in prompt.lower()",
-          "validator": "deterministic_check",
-          "enforcement": "soft",
-          "severity": "major",
-          "weight": 0.7,
-          "code_location": "router.py:14,33-34",
-          "code_snippet": "needs_weather = \"weather\" in prompt_lower\nif needs_weather:\n    tools_needed.append(\"get_weather\")"
-        },
-        {
-          "id": "OBL-020",
-          "description": "Router must include search_hotels in tools_needed when 'hotel' or 'accommodation' appears in prompt",
-          "applies_to": [
-            "router"
-          ],
-          "rule": "'search_hotels' in routing_decision['tools'] when 'hotel' in prompt.lower() or 'accommodation' in prompt.lower()",
-          "validator": "deterministic_check",
-          "enforcement": "soft",
-          "severity": "major",
-          "weight": 0.7,
-          "code_location": "router.py:15,35-36",
-          "code_snippet": "needs_hotels = \"hotel\" in prompt_lower or \"accommodation\" in prompt_lower\nif needs_hotels:\n    tools_needed.append(\"search_hotels\")"
-        },
-        {
-          "id": "OBL-021",
-          "description": "Router must include search_flights in tools_needed when 'flight' appears in prompt",
-          "applies_to": [
-            "router"
-          ],
-          "rule": "'search_flights' in routing_decision['tools'] when 'flight' in prompt.lower()",
-          "validator": "deterministic_check",
-          "enforcement": "soft",
-          "severity": "major",
-          "weight": 0.7,
-          "code_location": "router.py:16,37-38",
-          "code_snippet": "needs_flights = \"flight\" in prompt_lower\nif needs_flights:\n    tools_needed.append(\"search_flights\")"
-        }
-      ],
-      "acceptance_policy": {
-        "require_all_hard_obligations": false,
-        "block_on": "{<Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.7
-      }
-    },
-    {
-      "id": "contract.retrieval-quality.v1",
-      "version": "1.0.0",
-      "name": "Knowledge Base Retrieval Quality Contract",
-      "target_agents": [
-        "*"
-      ],
-      "task_context": {
-        "goal": "Retrieve relevant knowledge base documents for user queries",
-        "inputs": {},
-        "constraints": [
-          "Must return top_k most relevant documents",
-          "Must score based on keyword overlap"
-        ]
-      },
-      "output_contract": {
-        "format": "json",
-        "schema_definition": {},
-        "required_fields": []
-      },
-      "obligations": [
-        {
-          "id": "OBL-022",
-          "description": "Retrieval must return at most top_k documents",
-          "applies_to": [
-            "retrieval"
-          ],
-          "rule": "len(retrieve(query, top_k)) <= top_k",
+          "rule": "When step >= config.max_agent_steps, should_stop() returns (True, 'max_steps_reached')",
           "validator": "deterministic_check",
           "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "retrieval.py:63,93",
-          "code_snippet": "def retrieve(query: str, top_k: int = 3) -> list[dict[str, Any]]:\n    ...\n    results = [doc for score, doc in scored_docs[:top_k]]"
-        },
-        {
-          "id": "OBL-023",
-          "description": "Retrieval must score documents with keyword matches higher than those without",
-          "applies_to": [
-            "retrieval"
-          ],
-          "rule": "Documents with keywords in query receive score += 2, ensuring keyword matches rank higher",
-          "validator": "deterministic_check",
-          "enforcement": "soft",
-          "severity": "minor",
-          "weight": 0.5,
-          "code_location": "retrieval.py:80-82",
-          "code_snippet": "for keyword in doc[\"keywords\"]:\n    if keyword in query_lower:\n        score += 2"
-        },
-        {
-          "id": "OBL-024",
-          "description": "Retrieved documents must have score > 0 (relevant to query)",
-          "applies_to": [
-            "retrieval"
-          ],
-          "rule": "all(score > 0 for score, doc in scored_docs if doc in results)",
-          "validator": "deterministic_check",
-          "enforcement": "soft",
-          "severity": "minor",
-          "weight": 0.5,
-          "code_location": "retrieval.py:88-89",
-          "code_snippet": "if score > 0:\n    scored_docs.append((score, doc))"
+          "severity": "critical"
         }
       ],
       "acceptance_policy": {
         "require_all_hard_obligations": true,
-        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.7
-      }
-    },
-    {
-      "id": "contract.session-memory.v1",
-      "version": "1.0.0",
-      "name": "Session State Management Contract",
-      "target_agents": [
-        "*"
-      ],
-      "task_context": {
-        "goal": "Maintain consistent session state and user preferences across interactions",
-        "inputs": {},
-        "constraints": [
-          "Must persist user preferences",
-          "Must track conversation history"
-        ]
-      },
-      "output_contract": {
-        "format": "json",
-        "schema_definition": {},
-        "required_fields": []
-      },
-      "obligations": [
-        {
-          "id": "OBL-025",
-          "description": "Session data must include preferences and history fields",
-          "applies_to": [
-            "state"
-          ],
-          "rule": "session_data has keys 'preferences' and 'history' where preferences is dict and history is list",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "state.py:14",
-          "code_snippet": "session_data = _SESSION_STORE.get(session_id, {\"preferences\": {}, \"history\": []})"
-        },
-        {
-          "id": "OBL-026",
-          "description": "update_session_memory must append prompt-response pairs to history",
-          "applies_to": [
-            "state"
-          ],
-          "rule": "After update_session_memory, history contains {\"prompt\": prompt, \"response\": response.get(\"assistant_message\", \"\")}",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "state.py:35-37",
-          "code_snippet": "session_data.setdefault(\"history\", []).append(\n    {\"prompt\": prompt, \"response\": response.get(\"assistant_message\", \"\")}\n)"
-        },
-        {
-          "id": "OBL-027",
-          "description": "Preferences must be extracted from prompts when extract_preferences=True",
-          "applies_to": [
-            "state"
-          ],
-          "rule": "When 'budget' in prompt_lower, extract budget value into prefs['budget']; when seat preferences mentioned, extract into prefs['seat_preference']",
-          "validator": "deterministic_check",
-          "enforcement": "soft",
-          "severity": "minor",
-          "weight": 0.5,
-          "code_location": "state.py:40-60",
-          "code_snippet": "if extract_preferences:\n    prompt_lower = prompt.lower()\n    prefs = session_data.setdefault(\"preferences\", {})\n    if \"budget\" in prompt_lower: ..."
-        }
-      ],
-      "acceptance_policy": {
-        "require_all_hard_obligations": true,
-        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.75
-      }
-    },
-    {
-      "id": "contract.postprocessing.v1",
-      "version": "1.0.0",
-      "name": "Response Postprocessing and Validation Contract",
-      "target_agents": [
-        "*"
-      ],
-      "task_context": {
-        "goal": "Normalize and validate LLM outputs, ensuring valid itineraries even when validation fails",
-        "inputs": {},
-        "constraints": [
-          "Must validate against Itinerary schema",
-          "Must provide fallback for invalid data"
-        ]
-      },
-      "output_contract": {
-        "format": "json",
-        "schema_definition": {},
-        "required_fields": []
-      },
-      "obligations": [
-        {
-          "id": "OBL-028",
-          "description": "normalize_itinerary must attempt Pydantic validation first",
-          "applies_to": [
-            "postprocessing"
-          ],
-          "rule": "Itinerary(**raw_itinerary) is called and ValidationError is caught",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "postprocess.py:17-22",
-          "code_snippet": "try:\n    # Validate against schema\n    validated = Itinerary(**raw_itinerary)\n    normalized = validated.model_dump()\nexcept ValidationError as e:"
-        },
-        {
-          "id": "OBL-029",
-          "description": "When validation fails, must provide fallback values for required fields (destination, dates)",
-          "applies_to": [
-            "postprocessing"
-          ],
-          "rule": "On ValidationError, normalized dict includes destination={'city': 'Unknown', 'country': 'Unknown'} and dates={'start_date': '2024-01-01', 'end_date': '2024-01-01'} as fallbacks",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "postprocess.py:28-46",
-          "code_snippet": "dates = raw_itinerary.get(\"dates\", {})\nif not dates or not isinstance(dates, dict):\n    dates = {\"start_date\": \"2024-01-01\", \"end_date\": \"2024-01-01\"}\n...\ndestination = {\"city\": \"Unknown\", \"country\": \"Unknown\"}"
-        },
-        {
-          "id": "OBL-030",
-          "description": "parse_llm_response must handle JSON parsing errors gracefully with fallback",
-          "applies_to": [
-            "postprocessing"
-          ],
-          "rule": "JSONDecodeError is caught and fallback parsing (markdown extraction or plain text) is attempted",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "major",
-          "weight": 0.8,
-          "code_location": "postprocess.py:83-96",
-          "code_snippet": "except json.JSONDecodeError as e:\n    # Fallback: if JSON parsing fails, extract from markdown\n    json_match = re.search(r'```json\\s*(.*?)\\s*```', content, re.DOTALL)\n    ...\n    # Last resort: treat as plain text with empty itinerary\n    return content, {}"
-        }
-      ],
-      "acceptance_policy": {
-        "require_all_hard_obligations": true,
-        "block_on": "{<Severity.MAJOR: 'major'>, <Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.85
-      }
-    },
-    {
-      "id": "contract.agent-termination.v1",
-      "version": "1.0.0",
-      "name": "Agent Iteration Termination Contract",
-      "target_agents": [
-        "*"
-      ],
-      "task_context": {
-        "goal": "Prevent infinite loops by enforcing max_agent_steps limit",
-        "inputs": {},
-        "constraints": [
-          "Must stop after max_agent_steps iterations"
-        ]
-      },
-      "output_contract": {
-        "format": "text",
-        "schema_definition": {},
-        "required_fields": []
-      },
-      "obligations": [
-        {
-          "id": "OBL-031",
-          "description": "Agent must terminate when step count reaches max_agent_steps",
-          "applies_to": [
-            "agent"
-          ],
-          "rule": "should_stop(step) returns (True, 'max_steps_reached') when step >= config.max_agent_steps",
-          "validator": "deterministic_check",
-          "enforcement": "hard",
-          "severity": "critical",
-          "weight": 1.0,
-          "code_location": "agent.py:148-150",
-          "code_snippet": "if step >= self.config.max_agent_steps:\n    span.set_attribute(\"termination.reason\", \"max_steps_reached\")\n    return True, \"max_steps_reached\""
-        },
-        {
-          "id": "OBL-032",
-          "description": "Termination reason must be logged to tracing span",
-          "applies_to": [
-            "agent"
-          ],
-          "rule": "span.set_attribute('termination.reason', reason) is called before returning from should_stop",
-          "validator": "deterministic_check",
-          "enforcement": "soft",
-          "severity": "minor",
-          "weight": 0.5,
-          "code_location": "agent.py:149,152",
-          "code_snippet": "span.set_attribute(\"termination.reason\", \"max_steps_reached\")\n...\nspan.set_attribute(\"termination.reason\", \"continue\")"
-        }
-      ],
-      "acceptance_policy": {
-        "require_all_hard_obligations": true,
-        "block_on": "{<Severity.CRITICAL: 'critical'>}",
-        "use_weighted_scoring": true,
-        "min_weighted_score": 0.9
+        "block_on": "{<Severity.CRITICAL: 'critical'>}"
       }
     }
   ],
-  "summary": "Discovered 12 comprehensive contracts covering 32 obligations across the TravelOps demo application. Contracts include: (1) API Response validation with TravelOpsResponse schema, (2) Itinerary structure validation, (3) Date format enforcement (YYYY-MM-DD ISO 8601), (4) LLM safety and factual grounding policies, (5) Configuration parameter constraints (temperature 0-1, max_steps > 0), (6) JSON output format requirements, (7) Tool execution error handling, (8) Request routing logic for tools and retrieval, (9) Knowledge base retrieval quality, (10) Session memory management, (11) Response postprocessing with fallback handling, and (12) Agent termination to prevent infinite loops. Total obligations: 2 jsonschema validators (Pydantic models), 25 deterministic_check validators (format patterns, value constraints, logic rules), 3 rubric validators (LLM behavioral policies). Enforcement: 24 hard obligations (must pass), 8 soft obligations (contribute to score). Severity: 12 critical, 16 ma..."
+  "summary": "Discovered 10 contracts with 18 obligations across TravelOps demo application. Key contract categories: (1) Schema Validation - 2 jsonschema obligations for TravelOpsResponse and Itinerary models ensuring complete validation of all fields, types, and nested structures; (2) Data Format - 1 deterministic_check for ISO 8601 date format (YYYY-MM-DD); (3) LLM Safety - 2 rubric obligations for fact grounding and source citation per system prompt policies; (4) Configuration - 3 deterministic_check obligations for temperature bounds (0-1), positive max_steps, and valid provider; (5) Output Format - 2 deterministic_check obligations for JSON validity and OpenAI JSON mode; (6) Knowledge Base - 2 rubric obligations for tool usage and user preference respect; (7) Routing - 2 deterministic_check obligations for keyword-based retrieval and tool routing logic; (8) Tool Outputs - 3 deterministic_check obligations ensuring weather, hotel, and flight tools return required dictionary keys; (9) Agent Termination - 1 deterministic_check for max steps enforcement. Enforcement: 14 hard/4 soft. Severity: 6 critical/10 major/2 minor. All obligations cite exact file:line locations for traceability."
 }

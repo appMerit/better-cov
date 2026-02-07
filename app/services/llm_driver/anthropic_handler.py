@@ -152,20 +152,10 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
                 ):
                     parsed_input = parsed_input["input_schema"]
 
-                # Auto-truncate long strings
+                # Auto-truncate summary if too long (ContractDiscoveryResult has max_length=2000)
                 if 'summary' in parsed_input and isinstance(parsed_input['summary'], str):
-                    if len(parsed_input['summary']) > 1000:
-                        parsed_input['summary'] = parsed_input['summary'][:997] + "..."
-                
-                # Truncate long strings in nested objects
-                if 'contracts' in parsed_input and isinstance(parsed_input['contracts'], list):
-                    for contract in parsed_input['contracts']:
-                        if isinstance(contract, dict):
-                            for field in ['title', 'description', 'expected_behavior', 'test_strategy']:
-                                if field in contract and isinstance(contract[field], str):
-                                    max_len = {'title': 100, 'description': 500, 'expected_behavior': 300, 'test_strategy': 300}.get(field, 500)
-                                    if len(contract[field]) > max_len:
-                                        contract[field] = contract[field][:max_len-3] + "..."
+                    if len(parsed_input['summary']) > 2000:
+                        parsed_input['summary'] = parsed_input['summary'][:1997] + "..."
                 
                 # Validate and return
                 return schema.model_validate(parsed_input), total_usage
