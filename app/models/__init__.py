@@ -1,17 +1,27 @@
 """Models for Better Coverage analyzer."""
 
 from .contract import (
-    CodeLocation,
-    Contract,
+    AcceptancePolicy,
     ContractDiscoveryResult,
-    ContractSeverity,
-    ContractType,
+    ContractObligation,
+    EnforcementLevel,
+    ObligationRule,
+    OutputContract,
+    OutputFormat,
+    Severity,
+    TaskContext,
+    ValidatorKind,
 )
 
 __all__ = [
-    "CodeLocation",
-    "Contract",
+    "AcceptancePolicy",
     "ContractDiscoveryResult",
-    "ContractSeverity",
-    "ContractType",
+    "ContractObligation",
+    "EnforcementLevel",
+    "ObligationRule",
+    "OutputContract",
+    "OutputFormat",
+    "Severity",
+    "TaskContext",
+    "ValidatorKind",
 ]

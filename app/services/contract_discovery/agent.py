@@ -55,11 +55,11 @@ class ContractDiscoveryAgent:
                 cwd=codebase_path,
             )
 
-        # Prepare task prompt
-        schema = json.dumps(ContractDiscoveryResult.model_json_schema(), indent=2)
+        # Prepare task prompt with schema
+        schema_json = json.dumps(ContractDiscoveryResult.model_json_schema(), indent=2)
         task = TASK_TEMPLATE.format(
             codebase_path=str(codebase_path),
-            schema=schema,
+            schema=f"```json\n{schema_json}\n```",
         )
 
         # Run agent - it will return a string description
@@ -76,21 +76,47 @@ class ContractDiscoveryAgent:
             print(f"\n🔄 Converting response to structured format...")
         
         result, _usage = await self.llm_client.create_object(
-            prompt=f"""Based on the agent's contract analysis, create a complete ContractDiscoveryResult.
+            prompt=f"""Convert the agent's contract analysis into a structured ContractDiscoveryResult.
 
-Agent's Analysis:
+Codebase: {codebase_path}
+
+Agent's Report:
 {response_text}
 
-CRITICAL: You MUST populate ALL required fields:
+Your Task:
+1. Parse each CONTRACT section into a ContractObligation object
+2. Parse each OBLIGATION subsection into an ObligationRule within its parent contract
+3. Populate all required fields properly
+
+ContractObligation Required Fields:
+- id: Like "contract.api-response.v1"
+- version: "1.0.0"
+- name: Optional display name
+- target_agents: ["*"] or specific agents
+- task_context: TaskContext(goal="...", inputs={{}}, constraints=[])
+- output_contract: OutputContract(format="json"|"markdown"|"text"|"code_patch", schema_definition={{}}, required_fields=[])
+- obligations: list[ObligationRule] - at least 1
+- acceptance_policy: AcceptancePolicy(require_all_hard_obligations=true, block_on=["critical"], use_weighted_scoring=true, min_weighted_score=0.9)
+
+ObligationRule Required Fields:
+- id: Like "OBL-001"
+- description: What this rule checks
+- applies_to: ["all"] or ["final_response"] etc.
+- rule: Machine-readable condition
+- validator: "jsonschema" | "deterministic_check" | "test_command" | "rubric" | "manual"
+- enforcement: "hard" | "soft"
+- severity: "critical" | "major" | "minor"
+- weight: 1.0 (default)
+- code_location: Optional "file.py:10-20"
+- code_snippet: Optional code text
+
+CRITICAL Requirements:
 - codebase_path: "{codebase_path}"
-- total_contracts: Count of contracts found
-- contracts: Array of Contract objects (extract each contract the agent found)
-- summary: Brief summary of findings
+- total_contracts: Count of ContractObligation objects
+- contracts: Array of ContractObligation objects (8-12 contracts)
+- summary: High-level overview
 
-Parse the agent's analysis carefully and extract every contract mentioned into the contracts array.
-Each contract needs: id, type, severity, title, description, location (file_path, line_start, line_end, code_snippet), expected_behavior, test_strategy.
-
-Return a complete ContractDiscoveryResult with the contracts array fully populated.""",
+Return a complete, valid ContractDiscoveryResult.""",
             schema=self.output_type,
         )
         

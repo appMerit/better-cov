@@ -54,20 +54,32 @@ async def run_contract_discovery(
     print(f"\n✅ Total contracts found: {result.total_contracts}")
     print(f"\n📁 Codebase: {result.codebase_path}")
     
-    # Count by type and severity from actual contracts
+    # Count obligations by validator, enforcement, and severity
     if result.contracts:
-        type_counts = {}
+        validator_counts = {}
+        enforcement_counts = {"hard": 0, "soft": 0}
         severity_counts = {}
-        for contract in result.contracts:
-            type_counts[contract.type.value] = type_counts.get(contract.type.value, 0) + 1
-            severity_counts[contract.severity.value] = severity_counts.get(contract.severity.value, 0) + 1
+        total_obligations = 0
         
-        print("\n📊 By Type:")
-        for contract_type, count in type_counts.items():
-            print(f"   - {contract_type}: {count}")
+        for contract in result.contracts:
+            for obligation in contract.obligations:
+                total_obligations += 1
+                validator_counts[obligation.validator] = validator_counts.get(obligation.validator, 0) + 1
+                enforcement_counts[obligation.enforcement] += 1
+                severity_counts[obligation.severity] = severity_counts.get(obligation.severity, 0) + 1
+        
+        print(f"\n📋 Total Obligations: {total_obligations}")
+        
+        print("\n🔍 By Validator Type:")
+        for validator, count in sorted(validator_counts.items()):
+            print(f"   - {validator}: {count}")
+        
+        print("\n⚖️  By Enforcement:")
+        for enforcement, count in enforcement_counts.items():
+            print(f"   - {enforcement}: {count}")
         
         print("\n🎯 By Severity:")
-        for severity, count in severity_counts.items():
+        for severity, count in sorted(severity_counts.items()):
             print(f"   - {severity}: {count}")
     
     print(f"\n📝 Summary:\n{result.summary}")
@@ -75,13 +87,17 @@ async def run_contract_discovery(
     # Print first few contracts as examples
     if result.contracts:
         print("\n" + "=" * 80)
-        print("📖 SAMPLE CONTRACTS (first 3)")
+        print("📖 SAMPLE CONTRACTS (first 2)")
         print("=" * 80)
-        for i, contract in enumerate(result.contracts[:3], 1):
-            print(f"\n{i}. {contract.title} ({contract.type.value})")
-            print(f"   Severity: {contract.severity.value}")
-            print(f"   Location: {contract.location.file_path}:{contract.location.line_start}-{contract.location.line_end}")
-            print(f"   Description: {contract.description[:200]}...")
+        for i, contract in enumerate(result.contracts[:2], 1):
+            print(f"\n{i}. {contract.name or contract.id} (v{contract.version})")
+            print(f"   ID: {contract.id}")
+            print(f"   Goal: {contract.task_context.goal}")
+            print(f"   Output Format: {contract.output_contract.format}")
+            print(f"   Obligations: {len(contract.obligations)}")
+            for j, obl in enumerate(contract.obligations[:3], 1):
+                print(f"      {j}. {obl.id}: {obl.description[:70]}...")
+                print(f"         Validator: {obl.validator}, Enforcement: {obl.enforcement}, Severity: {obl.severity}")
 
     # Save to file if requested
     if output_file:

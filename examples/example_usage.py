@@ -28,74 +28,75 @@ async def main():
     
     result = await agent.discover_contracts(
         codebase_path=codebase_path,
-        max_turns=100
+        max_turns=50
     )
     
     # Print results
     print(f"\nFound {result.total_contracts} contracts!")
     print(f"\nSummary: {result.summary}")
     
-    # Print all hard contracts (format-based)
-    hard_contract_types = ["json_schema", "type_hint", "api_contract", "data_format", "validation_rule"]
-    hard_contracts = [c for c in result.contracts if c.type.value in hard_contract_types]
+    # Count obligations by validator type
+    validator_counts = {}
+    enforcement_counts = {"hard": 0, "soft": 0}
+    severity_counts = {}
+    total_obligations = 0
     
-    print(f"\n{'='*80}")
-    print(f"HARD CONTRACTS ({len(hard_contracts)})")
-    print('='*80)
-    
-    for contract in hard_contracts:
-        print(f"\n📋 {contract.title}")
-        print(f"   Type: {contract.type.value} | Severity: {contract.severity.value}")
-        print(f"   Location: {contract.location.file_path}:{contract.location.line_start}")
-        print(f"   {contract.description[:150]}...")
-    
-    # Print all soft contracts (behavioral)
-    soft_contract_types = ["behavioral", "policy", "constraint", "guideline"]
-    soft_contracts = [c for c in result.contracts if c.type.value in soft_contract_types]
-    
-    print(f"\n{'='*80}")
-    print(f"SOFT CONTRACTS ({len(soft_contracts)})")
-    print('='*80)
-    
-    for contract in soft_contracts:
-        print(f"\n💭 {contract.title}")
-        print(f"   Type: {contract.type.value} | Severity: {contract.severity.value}")
-        print(f"   Location: {contract.location.file_path}:{contract.location.line_start}")
-        print(f"   {contract.description[:150]}...")
-    
-    # Show contracts by component
-    print(f"\n{'='*80}")
-    print("CONTRACTS BY COMPONENT")
-    print('='*80)
-    
-    # Group contracts by affected components
-    component_contracts = {}
     for contract in result.contracts:
-        for component in contract.affected_components:
-            if component not in component_contracts:
-                component_contracts[component] = []
-            component_contracts[component].append(contract)
-    
-    for component, contracts in sorted(component_contracts.items()):
-        print(f"\n{component}: {len(contracts)} contracts")
-        for contract in contracts[:3]:  # Show first 3
-            print(f"  - {contract.title} ({contract.type.value})")
-    
-    # Testable vs non-testable
-    testable = [c for c in result.contracts if c.testable]
-    non_testable = [c for c in result.contracts if not c.testable]
+        for obligation in contract.obligations:
+            total_obligations += 1
+            validator_counts[obligation.validator] = validator_counts.get(obligation.validator, 0) + 1
+            enforcement_counts[obligation.enforcement] += 1
+            severity_counts[obligation.severity] = severity_counts.get(obligation.severity, 0) + 1
     
     print(f"\n{'='*80}")
-    print(f"TESTABILITY")
+    print(f"OBLIGATION STATISTICS")
     print('='*80)
-    print(f"Testable: {len(testable)}")
-    print(f"Non-testable: {len(non_testable)}")
+    print(f"Total Obligations: {total_obligations}")
+    print(f"\nBy Validator:")
+    for validator, count in sorted(validator_counts.items()):
+        print(f"  - {validator}: {count}")
+    print(f"\nBy Enforcement:")
+    for enforcement, count in enforcement_counts.items():
+        print(f"  - {enforcement}: {count}")
+    print(f"\nBy Severity:")
+    for severity, count in sorted(severity_counts.items()):
+        print(f"  - {severity}: {count}")
     
-    # Show some test strategies
-    print("\nExample test strategies:")
-    for contract in testable[:5]:
-        print(f"\n  {contract.title}:")
-        print(f"    {contract.test_strategy}")
+    # Print sample contracts
+    print(f"\n{'='*80}")
+    print(f"SAMPLE CONTRACTS (first 3)")
+    print('='*80)
+    
+    for i, contract in enumerate(result.contracts[:3], 1):
+        print(f"\n{i}. {contract.name or contract.id} (v{contract.version})")
+        print(f"   ID: {contract.id}")
+        print(f"   Goal: {contract.task_context.goal}")
+        print(f"   Output Format: {contract.output_contract.format}")
+        print(f"   Target Agents: {', '.join(contract.target_agents)}")
+        print(f"   Obligations: {len(contract.obligations)}")
+        
+        for j, obl in enumerate(contract.obligations[:3], 1):
+            print(f"\n      {j}. {obl.id}: {obl.description}")
+            print(f"         Validator: {obl.validator}")
+            print(f"         Enforcement: {obl.enforcement}")
+            print(f"         Severity: {obl.severity}")
+            print(f"         Rule: {obl.rule[:100]}...")
+            if obl.code_location:
+                print(f"         Location: {obl.code_location}")
+    
+    # Show acceptance policies
+    print(f"\n{'='*80}")
+    print(f"ACCEPTANCE POLICIES")
+    print('='*80)
+    
+    for contract in result.contracts[:3]:
+        policy = contract.acceptance_policy
+        print(f"\n{contract.name or contract.id}:")
+        print(f"  - Require all hard obligations: {policy.require_all_hard_obligations}")
+        print(f"  - Block on severities: {', '.join(policy.block_on)}")
+        print(f"  - Use weighted scoring: {policy.use_weighted_scoring}")
+        if policy.use_weighted_scoring:
+            print(f"  - Min weighted score: {policy.min_weighted_score}")
 
 
 if __name__ == "__main__":

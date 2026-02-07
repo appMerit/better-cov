@@ -6,18 +6,25 @@ A Claude Code Agent that analyzes Python codebases to discover all explicit and 
 
 A **contract** is any explicit or implicit requirement, constraint, or expectation about how a system should behave. Contracts can be:
 
-### Hard Contracts (Explicit, Format-Based)
-- **JSON Schemas / Pydantic Models**: Defined output structures
-- **Type Hints**: Function signatures, return types
-- **API Contracts**: REST endpoints, response formats
-- **Data Formats**: Date formats (YYYY-MM-DD), string patterns, enums
-- **Validation Rules**: Explicit validation logic in code
+### Contract Obligations
 
-### Soft Contracts (Behavioral, Policy-Based)
-- **Behavioral**: "Be friendly", "Be concise", "Use professional tone"
-- **Policies**: "Never invent facts", "Always cite sources"
-- **Constraints**: "Max 3 retries", "Must complete in <5s"
-- **Guidelines**: "Prefer X over Y", "Should do Z when W"
+Each `ContractObligation` groups related testable rules (`ObligationRule` objects):
+
+**Validator Types:**
+- **jsonschema**: Pydantic models, JSON structures, data schemas
+- **deterministic_check**: Boolean checks, format validation, field presence
+- **test_command**: pytest tests, unit tests that can be executed
+- **rubric**: LLM-judged quality (tone, helpfulness, accuracy)
+- **manual**: Requirements that need human verification
+
+**Enforcement Levels:**
+- **hard**: Must pass or system fails (e.g., schema validation)
+- **soft**: Contributes to quality score (e.g., tone preferences)
+
+**Severity Levels:**
+- **critical**: System breaks if violated
+- **major**: Significant functionality impaired
+- **minor**: Degraded experience or style issue
 
 ## Installation
 
@@ -82,44 +89,61 @@ uv run python run_discovery.py merit-travelops-demo/app --debug
 
 ## Output Format
 
-The tool outputs a `ContractDiscoveryResult` JSON file containing:
+The tool outputs a `ContractDiscoveryResult` JSON file with executable `ContractObligation` objects:
 
 ```json
 {
   "codebase_path": "path/to/analyzed/code",
-  "total_contracts": 42,
+  "total_contracts": 10,
   "contracts": [
     {
-      "id": "contract_1",
-      "type": "json_schema",
-      "severity": "critical",
-      "title": "TravelOpsResponse Schema",
-      "description": "The response must follow this exact JSON structure...",
-      "location": {
-        "file_path": "app/schemas.py",
-        "line_start": 63,
-        "line_end": 69,
-        "code_snippet": "class TravelOpsResponse(BaseModel):..."
+      "id": "contract.api-response.v1",
+      "version": "1.0.0",
+      "name": "API Response Contract",
+      "target_agents": ["*"],
+      "task_context": {
+        "goal": "Return structured travel planning response",
+        "inputs": {},
+        "constraints": ["Must be valid JSON", "All required fields present"]
       },
-      "expected_behavior": "All API responses must conform to this schema",
-      "violation_example": "Returning raw strings instead of structured JSON",
-      "affected_components": ["agent.py", "postprocess.py"],
-      "testable": true,
-      "test_strategy": "Use pydantic validation to verify structure"
+      "output_contract": {
+        "format": "json",
+        "schema_definition": {},
+        "required_fields": ["assistant_message", "itinerary", "session_id"]
+      },
+      "obligations": [
+        {
+          "id": "OBL-001",
+          "description": "Response must match TravelOpsResponse schema",
+          "applies_to": ["final_response"],
+          "rule": "pydantic_validate(response, TravelOpsResponse) == success",
+          "validator": "jsonschema",
+          "enforcement": "hard",
+          "severity": "critical",
+          "weight": 1.0,
+          "code_location": "schemas.py:63-69",
+          "code_snippet": "class TravelOpsResponse(BaseModel): ..."
+        },
+        {
+          "id": "OBL-002",
+          "description": "All required fields must be present",
+          "applies_to": ["final_response"],
+          "rule": "check all required fields in dict",
+          "validator": "deterministic_check",
+          "enforcement": "hard",
+          "severity": "critical",
+          "weight": 1.0
+        }
+      ],
+      "acceptance_policy": {
+        "require_all_hard_obligations": true,
+        "block_on": ["critical"],
+        "use_weighted_scoring": true,
+        "min_weighted_score": 0.9
+      }
     }
   ],
-  "summary": "Found 42 contracts: 15 hard contracts (JSON schemas, type hints)...",
-  "contracts_by_type": {
-    "json_schema": 8,
-    "behavioral": 12,
-    "policy": 6
-  },
-  "contracts_by_severity": {
-    "critical": 10,
-    "high": 15,
-    "medium": 12,
-    "low": 5
-  }
+  "summary": "Found 10 contracts with 28 obligations: 8 jsonschema, 12 deterministic_check, 6 rubric, 2 test_command validators"
 }
 ```
 
