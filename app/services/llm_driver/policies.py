@@ -5,6 +5,7 @@ class AGENT(Enum):
     ERROR_ANALYZER = "error_analyzer"
     SUITE_SCHEMA_BUILDER = "suite_schema_builder"
     TEST = "test"
+    CONTRACT_DISCOVERY = "contract_discovery"
 
 
 class TOOL(Enum):
