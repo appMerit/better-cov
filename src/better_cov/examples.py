@@ -22,7 +22,6 @@ def strict_ci_contract() -> ContractObligation:
         id="contract.strict-ci.v1",
         name="Strict CI Contract",
         version="1.0.0",
-        target_agents=["code-agent-v1"],
         task_context=TaskContext(
             goal="Generate a production-ready patch and tests",
             inputs={"repo": "backend-service"},
@@ -56,8 +55,6 @@ def strict_ci_contract() -> ContractObligation:
         acceptance_policy=AcceptancePolicy(
             require_all_hard_obligations=True,
             block_on={Severity.CRITICAL, Severity.MAJOR},
-            use_weighted_scoring=False,
-            min_weighted_score=1.0,
         ),
     )
 
@@ -69,7 +66,6 @@ def friendly_assistant_contract() -> ContractObligation:
         id="contract.friendly-assistant.v1",
         name="Friendly Assistant Contract",
         version="1.0.0",
-        target_agents=["support-agent-v2", "support-agent-v3"],
         task_context=TaskContext(
             goal="Answer accurately with friendly tone",
             constraints=["No unsafe advice"],
@@ -96,14 +92,11 @@ def friendly_assistant_contract() -> ContractObligation:
                 validator=ValidatorKind.RUBRIC,
                 enforcement=EnforcementLevel.SOFT,
                 severity=Severity.MINOR,
-                weight=0.25,
             ),
         ],
         acceptance_policy=AcceptancePolicy(
             require_all_hard_obligations=True,
             block_on={Severity.CRITICAL},
-            use_weighted_scoring=True,
-            min_weighted_score=0.85,
         ),
     )
 
