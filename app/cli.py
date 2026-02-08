@@ -148,6 +148,7 @@ def _render_coverage_summary(
         tests_table = Table(
             title=f"Tests considered ({len(coverage.discovered_test_refs)})",
             box=box.SIMPLE,
+            \
             show_header=False,
         )
         tests_table.add_column()
