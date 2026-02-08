@@ -2,6 +2,10 @@
 
 import json
 from pathlib import Path
+from typing import Optional
+
+from rich.console import Console
+from rich.markdown import Markdown
 
 from app.models.contract import ContractDiscoveryResult
 from app.services.llm_driver.anthropic_handler import LLMClaude
@@ -20,13 +24,15 @@ class ContractDiscoveryAgent:
     output_type = ContractDiscoveryResult
     standard_tools = [TOOL.GLOB, TOOL.GREP, TOOL.LS, TOOL.READ]
 
-    def __init__(self, llm_client: LLMClaude):
+    def __init__(self, llm_client: LLMClaude, console: Optional[Console] = None):
         """Initialize the agent.
         
         Args:
             llm_client: Configured LLM client for Claude
+            console: Rich console for optional rendering
         """
         self.llm_client = llm_client
+        self.console = console
 
     async def discover_contracts(
         self, callable_ref: str, max_turns: int = 50, verbose: bool = True
@@ -46,7 +52,8 @@ class ContractDiscoveryAgent:
         parsed = parse_callable(callable_ref)
         codebase_path = Path(parsed["sut_root"]).resolve()
         sut_ast_context = format_sut_ast(parsed)
-        print(sut_ast_context)
+        if verbose and self.console:
+            self.console.print(Markdown(sut_ast_context))
 
         # Compile agent if not already compiled
         if self.name not in self.llm_client.compiled_agents:
@@ -88,12 +95,6 @@ class ContractDiscoveryAgent:
                 pass
 
         # Convert the text response to structured format (LLM-powered parser)
-        if verbose:
-            print(f"\n🔄 Converting response to structured format...")
-            print(f"\n📄 Agent's text output (first 1000 chars):")
-            print(response_text[:1000] if response_text else "None")
-            print("...\n")
-        
         result, _usage = await self.llm_client.create_object(
             model=self.llm_client.default_small_model,  # Use fast Haiku model for conversion
             prompt=f"""Convert the agent's contract analysis into a structured ContractDiscoveryResult.

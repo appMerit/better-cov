@@ -290,16 +290,16 @@ Check the schema carefully and provide complete data."""
                         turn_count += 1
                         last_assistant_message = message
                         if verbose:
-                            print(f"🔄 Turn {turn_count}/{max_turns or '∞'}: Agent thinking...")
+                            print(f"Turn {turn_count}/{max_turns or '∞'}: Agent thinking...")
                         continue
                     case ResultMessage(result=res):
                         client_response = res
                         if verbose:
-                            print(f"✅ Agent completed in {turn_count} turns")
+                            print(f"Agent completed in {turn_count} turns")
                     case _:
                         # Log other message types to help debug
                         if verbose:
-                            print(f"   📨 {msg_type}")
+                            print("Agent being agent...")
                         continue
 
         if not client_response:

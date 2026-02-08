@@ -92,12 +92,6 @@ class ContractCoverageAgent:
             except Exception:
                 pass
 
-        if verbose:
-            print("\n🔄 Converting response to structured format...")
-            print("\n📄 Agent's text output (first 1000 chars):")
-            print(response_text[:1000] if response_text else "None")
-            print("...\n")
-
         result, _usage = await self.llm_client.create_object(
             model=self.llm_client.default_small_model,
             prompt=f"""Convert the agent's coverage analysis into a structured ContractCoverageResult.

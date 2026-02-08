@@ -54,43 +54,38 @@ cp .env.example .env
 
 ### Basic Usage
 
-Run contract discovery rooted at a callable entrypoint (`{file.py}:{qualname}`):
+Run contract discovery and coverage rooted at a callable entrypoint (`{file.py}:{qualname}`):
 
 ```bash
 # Using uv (recommended)
-uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
-
-# Or directly with python
-python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
+uv run better-cov merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
 ```
 
 ### Advanced Options
 
 ```bash
-# Specify output file
-uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ -o results/contracts.json
-
 # Increase max turns for thorough analysis
-uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ --max-turns 150
+uv run better-cov merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ --max-turns 150
 
 # Quiet mode (no progress logging)
-uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ --quiet
+uv run better-cov merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ --quiet
 
 # Debug mode (detailed logging)
-uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ --debug
+uv run better-cov merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ --debug
 ```
 
 ### Command Line Arguments
 
 - `callable_ref`: Callable reference string in the form `{file.py}:{qualname}` (required)
-- `-o, --output`: Path to save results JSON file (default: `contracts_output.json`)
 - `--max-turns`: Maximum turns for agent (default: 50)
 - `--quiet`: Suppress progress logging
 - `--debug`: Show detailed debug information
 
 ## Output Format
 
-The tool outputs a `ContractDiscoveryResult` JSON file with executable `ContractObligation` objects:
+The tool writes outputs to `results/contracts.json` and `results/coverage.json` in the repo root.
+
+`contracts.json` contains a `ContractDiscoveryResult` JSON file with executable `ContractObligation` objects:
 
 ```json
 {
@@ -129,7 +124,7 @@ better-cov/
 │           ├── anthropic_handler.py  # Claude SDK wrapper
 │           └── policies.py      # Agent policies and tools
 ├── merit-travelops-demo/        # Example codebase to analyze
-├── run_discovery.py             # Main CLI entry point
+├── app/cli.py                   # Main CLI entry point
 ├── requirements.txt
 └── README.md
 ```
@@ -152,10 +147,10 @@ better-cov/
 ## Example: Analyzing merit-travelops-demo
 
 ```bash
-uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
+uv run better-cov merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
 ```
 
-You'll see real-time progress as the agent works:
+You'll see a Rich-formatted summary as the agent works:
 ```
 🔍 Starting contract discovery for: merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
 📊 Max turns: 50

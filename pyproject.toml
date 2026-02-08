@@ -9,10 +9,11 @@ dependencies = [
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
     "claude-agent-sdk>=0.1.0",
+    "rich>=14.3.2",
 ]
 
 [project.scripts]
-discover = "run_discovery:main"
+better-cov = "app.cli:main"
 
 [build-system]
 requires = ["hatchling"]
