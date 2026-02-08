@@ -12,25 +12,33 @@ def format_sut_ast(parsed: dict[str, Any]) -> str:
     """Convert parsed SUT data into an LLM-readable text block.
 
     Args:
-        parsed: Output of parse_sut() -- dict with modules, call_graph, pipeline, etc.
+        parsed: Output of parse_sut() or parse_callable() -- dict with modules,
+            call_graph, pipeline, and optional entrypoint metadata.
 
     Returns:
         A multi-section text string ready to be injected into an agent prompt.
     """
     sections: list[str] = []
     sut_root = Path(parsed["sut_root"])
+    # display_root controls how absolute paths are made human-readable.
+    # - parse_sut() historically displayed paths relative to sut_root.parent (so you see "app/x.py")
+    # - parse_callable() wants paths relative to the project root (so you see "tests/x.py", "app/y.py")
+    display_root = Path(parsed.get("display_root") or sut_root.parent)
 
     sections.append("## SUT Code Map\n")
-    sections.append(_format_files_section(parsed["modules"], sut_root))
-    sections.append(_format_classes_section(parsed["modules"], sut_root))
-    sections.append(_format_functions_section(parsed["modules"], sut_root))
+    if parsed.get("entrypoint"):
+        sections.append(_format_entrypoint_section(parsed["entrypoint"], sut_root))
+    sections.append(_format_files_section(parsed["modules"], display_root))
+    sections.append(_format_classes_section(parsed["modules"], display_root))
+    sections.append(_format_functions_section(parsed["modules"], display_root))
     sections.append(_format_call_graph_section(parsed["call_graph"]))
 
     if parsed.get("pipeline"):
-        sections.append(_format_pipeline_section(parsed["pipeline"], sut_root))
+        sections.append(_format_pipeline_section(parsed["pipeline"], display_root))
 
     # Mermaid execution flow diagram
-    if parsed.get("pipeline"):
+    # Only render mermaid for the legacy class-based pipeline shape (parse_sut heuristic)
+    if parsed.get("pipeline") and parsed["pipeline"].get("class_name"):
         sections.append(
             _format_mermaid_pipeline(parsed["pipeline"], parsed["call_graph"])
         )
@@ -43,11 +51,25 @@ def format_sut_ast(parsed: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 def _rel_path(abs_path: str, sut_root: Path) -> str:
-    """Get a relative path from the SUT root's parent for display."""
+    """Get a relative path from the display root for display."""
     try:
-        return str(Path(abs_path).relative_to(sut_root.parent))
+        return str(Path(abs_path).relative_to(sut_root))
     except ValueError:
         return abs_path
+
+
+def _format_entrypoint_section(entrypoint: dict[str, Any], sut_root: Path) -> str:
+    """Format the Entry Point section for callable-rooted analysis."""
+    rel = _rel_path(entrypoint.get("file", ""), sut_root)
+    line_range = f"{entrypoint.get('line_start', '?')}-{entrypoint.get('line_end', '?')}"
+    ctype = entrypoint.get("type", "callable")
+    name = entrypoint.get("callable", "?")
+    lines = ["### Entry point"]
+    lines.append(f"- {name} [{ctype}]  ({rel}:{line_range})")
+    doc = (entrypoint.get("docstring") or "").strip()
+    if doc:
+        lines.append(f"  doc: {doc.splitlines()[0].strip()}")
+    return "\n".join(lines) + "\n"
 
 
 def _format_files_section(modules: list[dict[str, Any]], sut_root: Path) -> str:
@@ -162,12 +184,19 @@ def _format_call_graph_section(call_graph: list[dict[str, str]]) -> str:
 
 def _format_pipeline_section(pipeline: dict[str, Any], sut_root: Path) -> str:
     """Format the Pipeline Flow section showing the main entry point's steps."""
-    cls_name = pipeline.get("class_name", "?")
-    method_name = pipeline.get("method_name", "?")
     rel = _rel_path(pipeline.get("file", ""), sut_root)
 
-    lines = [f"### Pipeline Flow ({cls_name}.{method_name})"]
-    lines.append(f"Source: {rel}:{pipeline.get('line_start', '?')}-{pipeline.get('line_end', '?')}")
+    if pipeline.get("callable"):
+        title = pipeline.get("callable", "?")
+    else:
+        cls_name = pipeline.get("class_name", "?")
+        method_name = pipeline.get("method_name", "?")
+        title = f"{cls_name}.{method_name}"
+
+    lines = [f"### Pipeline Flow ({title})"]
+    lines.append(
+        f"Source: {rel}:{pipeline.get('line_start', '?')}-{pipeline.get('line_end', '?')}"
+    )
 
     steps = pipeline.get("steps", [])
     _format_steps(steps, lines, step_num=[1], indent=0)

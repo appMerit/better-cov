@@ -7,6 +7,7 @@ from app.models.contract import ContractDiscoveryResult
 from app.services.llm_driver.anthropic_handler import LLMClaude
 from app.services.llm_driver.policies import AGENT, FILE_ACCESS_POLICY, TOOL
 
+from .ast_analyzer import format_sut_ast, parse_callable
 from .prompts import SYSTEM_PROMPT, TASK_TEMPLATE
 
 
@@ -28,21 +29,24 @@ class ContractDiscoveryAgent:
         self.llm_client = llm_client
 
     async def discover_contracts(
-        self, codebase_path: str | Path, max_turns: int = 50, verbose: bool = True
+        self, callable_ref: str, max_turns: int = 50, verbose: bool = True
     ) -> ContractDiscoveryResult:
-        """Discover all contracts in a codebase.
+        """Discover contract obligations for a Python system rooted at a callable.
 
         Args:
-            codebase_path: Path to the codebase to analyze (e.g., "merit-travelops-demo/app")
+            callable_ref: Callable reference string in the form "{file.py}:{qualname}".
+                Examples:
+                  - "merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__"
+                  - "app/main.py:main"
             max_turns: Maximum number of turns for the agent (default: 100)
 
         Returns:
             ContractDiscoveryResult with all discovered contracts
         """
-        codebase_path = Path(codebase_path).resolve()
-        
-        if not codebase_path.exists():
-            raise ValueError(f"Codebase path does not exist: {codebase_path}")
+        parsed = parse_callable(callable_ref)
+        codebase_path = Path(parsed["sut_root"]).resolve()
+        sut_ast_context = format_sut_ast(parsed)
+        print(sut_ast_context)
 
         # Compile agent if not already compiled
         if self.name not in self.llm_client.compiled_agents:
@@ -59,6 +63,8 @@ class ContractDiscoveryAgent:
         schema_json = json.dumps(ContractDiscoveryResult.model_json_schema(), indent=2)
         task = TASK_TEMPLATE.format(
             codebase_path=str(codebase_path),
+            callable_ref=callable_ref,
+            sut_ast_context=sut_ast_context,
             schema=f"```json\n{schema_json}\n```",
         )
 
@@ -71,7 +77,17 @@ class ContractDiscoveryAgent:
             verbose=verbose,
         )
         
-        # Convert the text response to structured format
+        # Fast-path: if the agent followed instructions and returned valid JSON,
+        # validate it directly without a second LLM call.
+        if response_text:
+            try:
+                parsed = json.loads(response_text)
+                return ContractDiscoveryResult.model_validate(parsed)
+            except Exception:
+                # Fall back to conversion step below.
+                pass
+
+        # Convert the text response to structured format (LLM-powered parser)
         if verbose:
             print(f"\n🔄 Converting response to structured format...")
             print(f"\n📄 Agent's text output (first 1000 chars):")
@@ -83,40 +99,25 @@ class ContractDiscoveryAgent:
             prompt=f"""Convert the agent's contract analysis into a structured ContractDiscoveryResult.
 
 Codebase: {codebase_path}
+Entry callable: {callable_ref}
 
 Agent's Report:
 {response_text}
 
 Your Task:
-1. Parse each CONTRACT section into a ContractObligation object
-2. Parse each OBLIGATION subsection into an ObligationRule within its parent contract
-3. Populate all required fields properly
+1. Produce a `contracts` array with 8-12 ContractObligation objects when possible.
+2. Each ContractObligation must have:
+   - name: string
+   - obligations: non-empty array of ObligationRule objects
+3. Each ObligationRule must have:
+   - id: string
+   - location: string like "path/to/file.py:12-38"
+   - description: string
+   - rule: string (include how to validate inside the rule, e.g. "jsonschema: ...", "test_command: ...")
+   - enforcement: "hard" | "soft"
+   - severity: "critical" | "major" | "minor"
 
-ContractObligation Required Fields:
-- id: Like "contract.api-response.v1"
-- version: "1.0.0"
-- name: Optional display name
-- task_context: TaskContext(goal="...", inputs={{}}, constraints=[])
-- output_contract: OutputContract(format="json"|"markdown"|"text"|"code_patch", schema_definition={{}}, required_fields=[])
-- obligations: list[ObligationRule] - at least 1
-- acceptance_policy: AcceptancePolicy(require_all_hard_obligations=true, block_on=["critical"])
-
-ObligationRule Required Fields:
-- id: Like "OBL-001"
-- description: What this rule checks
-- applies_to: ["all"] or ["final_response"] etc.
-- rule: Machine-readable condition
-- validator: "jsonschema" | "deterministic_check" | "test_command" | "rubric" | "manual"
-- enforcement: "hard" | "soft" (default: "hard")
-- severity: "critical" | "major" | "minor" (default: "major")
-
-CRITICAL Requirements:
-- codebase_path: "{codebase_path}"
-- total_contracts: Count of ContractObligation objects
-- contracts: Array of ContractObligation objects (8-12 contracts)
-- summary: High-level overview
-
-Return a complete, valid ContractDiscoveryResult.""",
+Return a complete, valid ContractDiscoveryResult JSON object. Do NOT add extra top-level fields.""",
             schema=self.output_type,
         )
         

@@ -16,19 +16,23 @@ load_dotenv()
 
 
 async def run_contract_discovery(
-    codebase_path: str, output_file: str | None = None, max_turns: int = 50, verbose: bool = True, debug: bool = False
+    callable_ref: str,
+    output_file: str | None = None,
+    max_turns: int = 50,
+    verbose: bool = True,
+    debug: bool = False,
 ) -> ContractDiscoveryResult:
-    """Run contract discovery on a codebase.
+    """Run contract discovery rooted at a Python callable entrypoint.
 
     Args:
-        codebase_path: Path to codebase to analyze (e.g., "merit-travelops-demo/app")
+        callable_ref: Callable reference string in the form "{file.py}:{qualname}"
         output_file: Optional path to save results as JSON
         max_turns: Maximum turns for agent (default: 50)
 
     Returns:
         ContractDiscoveryResult with all discovered contracts
     """
-    print(f"🔍 Starting contract discovery for: {codebase_path}")
+    print(f"🔍 Starting contract discovery for: {callable_ref}")
     print(f"📊 Max turns: {max_turns}")
     print()
 
@@ -44,45 +48,41 @@ async def run_contract_discovery(
         print()
     
     result = await agent.discover_contracts(
-        codebase_path, max_turns=max_turns, verbose=verbose
+        callable_ref, max_turns=max_turns, verbose=verbose
     )
 
     # Print summary
     print("\n" + "=" * 80)
     print("📋 DISCOVERY COMPLETE")
     print("=" * 80)
-    print(f"\n✅ Total contracts found: {result.total_contracts}")
-    print(f"\n📁 Codebase: {result.codebase_path}")
+    total_contracts = len(result.contracts)
+    print(f"\n✅ Total contracts found: {total_contracts}")
     
-    # Count obligations by validator, enforcement, and severity
+    # Count obligations by enforcement and severity (validator is encoded inside `rule`)
     if result.contracts:
-        validator_counts = {}
-        enforcement_counts = {"hard": 0, "soft": 0}
-        severity_counts = {}
+        enforcement_counts: dict[str, int] = {"hard": 0, "soft": 0}
+        severity_counts: dict[str, int] = {}
         total_obligations = 0
         
         for contract in result.contracts:
             for obligation in contract.obligations:
                 total_obligations += 1
-                validator_counts[obligation.validator] = validator_counts.get(obligation.validator, 0) + 1
-                enforcement_counts[obligation.enforcement] += 1
-                severity_counts[obligation.severity] = severity_counts.get(obligation.severity, 0) + 1
+                enforcement_counts[str(obligation.enforcement)] = (
+                    enforcement_counts.get(str(obligation.enforcement), 0) + 1
+                )
+                severity_counts[str(obligation.severity)] = (
+                    severity_counts.get(str(obligation.severity), 0) + 1
+                )
         
         print(f"\n📋 Total Obligations: {total_obligations}")
         
-        print("\n🔍 By Validator Type:")
-        for validator, count in sorted(validator_counts.items()):
-            print(f"   - {validator}: {count}")
-        
         print("\n⚖️  By Enforcement:")
-        for enforcement, count in enforcement_counts.items():
+        for enforcement, count in sorted(enforcement_counts.items()):
             print(f"   - {enforcement}: {count}")
         
         print("\n🎯 By Severity:")
         for severity, count in sorted(severity_counts.items()):
             print(f"   - {severity}: {count}")
-    
-    print(f"\n📝 Summary:\n{result.summary}")
 
     # Print first few contracts as examples
     if result.contracts:
@@ -90,14 +90,13 @@ async def run_contract_discovery(
         print("📖 SAMPLE CONTRACTS (first 2)")
         print("=" * 80)
         for i, contract in enumerate(result.contracts[:2], 1):
-            print(f"\n{i}. {contract.name or contract.id} (v{contract.version})")
-            print(f"   ID: {contract.id}")
-            print(f"   Goal: {contract.task_context.goal}")
-            print(f"   Output Format: {contract.output_contract.format}")
+            print(f"\n{i}. {contract.name}")
             print(f"   Obligations: {len(contract.obligations)}")
             for j, obl in enumerate(contract.obligations[:3], 1):
                 print(f"      {j}. {obl.id}: {obl.description[:70]}...")
-                print(f"         Validator: {obl.validator}, Enforcement: {obl.enforcement}, Severity: {obl.severity}")
+                print(f"         Location: {obl.location}")
+                print(f"         Enforcement: {obl.enforcement}, Severity: {obl.severity}")
+                print(f"         Rule: {obl.rule[:120]}...")
 
     # Save to file if requested
     if output_file:
@@ -117,11 +116,11 @@ async def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Discover contracts in a Python codebase"
+        description="Discover contracts in a Python codebase rooted at a callable entrypoint"
     )
     parser.add_argument(
-        "codebase_path",
-        help="Path to codebase to analyze (e.g., merit-travelops-demo/app)",
+        "callable_ref",
+        help='Callable reference string "{file.py}:{qualname}" (e.g., merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__)',
     )
     parser.add_argument(
         "-o",
@@ -155,7 +154,7 @@ async def main():
             logging.basicConfig(level=logging.DEBUG)
         
         await run_contract_discovery(
-            codebase_path=args.codebase_path,
+            callable_ref=args.callable_ref,
             output_file=args.output,
             max_turns=args.max_turns,
             verbose=not args.quiet,

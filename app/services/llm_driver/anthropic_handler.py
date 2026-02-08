@@ -164,14 +164,32 @@ class LLMClaude(LLMAbstractHandler):  # noqa: D101
                 last_error = e
                 print(f"⚠️  Validation attempt {attempt + 1} failed: {str(e)[:200]}")
                 if attempt < max_retries - 1:
+                    required_fields: list[str] = []
+                    if hasattr(schema, "model_fields"):
+                        required_fields = [
+                            field_name
+                            for field_name, field_info in schema.model_fields.items()
+                            if field_info.is_required()
+                        ]
+
+                    required_fields_hint = (
+                        ", ".join(required_fields) if required_fields else "(none detected)"
+                    )
+
+                    extra_hints: list[str] = []
+                    # Add schema-specific guidance only when the fields exist.
+                    if "contracts" in getattr(schema, "model_fields", {}):
+                        extra_hints.append(
+                            "- contracts: must be an array of objects (use [] only if truly none)"
+                        )
+
                     # Retry with more explicit prompt
                     prompt = f"""{prompt}
 
 IMPORTANT: Your previous attempt failed with error: {str(e)}
-Make sure to include ALL required fields in the schema, especially:
-- contracts: must be an array of objects (not empty unless truly no contracts found)
-- summary: must be a string describing findings
-- All nested required fields must be populated
+Make sure to include ALL required fields in the schema: {required_fields_hint}
+Do NOT add fields that are not in the schema (extra keys will be rejected).
+{chr(10).join(extra_hints)}
 Check the schema carefully and provide complete data."""
                     continue
                 else:
@@ -192,6 +210,11 @@ Check the schema carefully and provide complete data."""
                         return schema.model_validate(parsed_input), total_usage
                     except:
                         raise last_error
+
+        # Defensive: loop should have returned or raised in all cases.
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("create_object failed without an exception")
 
     def compile_agent(  # noqa: D102
         self,
@@ -219,10 +242,13 @@ Check the schema carefully and provide complete data."""
         for extra_tool in extra_tools:
             name = extra_tool.__name__
             description = extra_tool.__doc__ or ""
+            type_hints = get_type_hints(extra_tool)
+            type_hints.pop("return", None)
+            field_defs: Any = {n: (tp, ...) for n, tp in type_hints.items()}
             input_schema = create_model(
                 f"InputSchema{name}",
-                **{n: (tp, ...) for n, tp in get_type_hints(extra_tool)},
-            )  # type: ignore[arg-type]
+                **field_defs,
+            )
             parsed_tool = tool(
                 name=name, description=description, input_schema=input_schema
             )(extra_tool)

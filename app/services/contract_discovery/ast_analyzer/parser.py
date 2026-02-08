@@ -8,6 +8,7 @@ pipeline flow -- all without executing the code.
 import ast
 from pathlib import Path
 from typing import Any
+from collections import defaultdict
 
 
 # ---------------------------------------------------------------------------
@@ -71,8 +72,9 @@ def _format_arguments(args: ast.arguments) -> list[str]:
     # Keyword-only args
     for i, arg in enumerate(args.kwonlyargs):
         base = _format_arg(arg)
-        if i < len(args.kw_defaults) and args.kw_defaults[i] is not None:
-            default_val = _unparse_safe(args.kw_defaults[i])
+        default_node = args.kw_defaults[i] if i < len(args.kw_defaults) else None
+        if default_node is not None:
+            default_val = _unparse_safe(default_node)
             base += f"={default_val}"
         formatted.append(base)
 
@@ -86,6 +88,240 @@ def _format_arguments(args: ast.arguments) -> list[str]:
 def _get_end_lineno(node: ast.AST) -> int:
     """Get the end line number of an AST node."""
     return getattr(node, "end_lineno", None) or getattr(node, "lineno", 0)
+
+
+def _parse_callable_ref(callable_ref: str) -> tuple[Path, list[str]]:
+    """Parse a callable reference of the form '{file.py}:{qualname}'.
+
+    Returns:
+        (file_path, qual_parts)
+    """
+    if ":" not in callable_ref:
+        raise ValueError(
+            "callable_ref must be in the form '{file.py}:{qualname}', "
+            f"got: {callable_ref!r}"
+        )
+    file_part, qual = callable_ref.split(":", 1)
+    file_path = Path(file_part).expanduser().resolve()
+    if not file_path.exists():
+        raise FileNotFoundError(f"Callable file does not exist: {str(file_path)!r}")
+    if file_path.suffix != ".py":
+        raise ValueError(f"Callable file must be a .py file, got: {str(file_path)!r}")
+    qual = qual.strip()
+    if not qual:
+        raise ValueError(
+            "callable_ref is missing qualname after ':', "
+            f"got: {callable_ref!r}"
+        )
+    parts = [p.strip() for p in qual.split(".") if p.strip()]
+    if not parts:
+        raise ValueError(f"Invalid qualname in callable_ref: {callable_ref!r}")
+    return file_path, parts
+
+
+def _find_named_def_in_body(
+    body: list[ast.stmt], name: str
+) -> ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef | None:
+    """Find a named class or function definition directly inside a body."""
+    for stmt in body:
+        if isinstance(stmt, ast.ClassDef) and stmt.name == name:
+            return stmt
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)) and stmt.name == name:
+            return stmt
+    return None
+
+
+def _find_qualname_node(
+    tree: ast.AST, qual_parts: list[str]
+) -> tuple[ast.AST, list[ast.AST]]:
+    """Find an AST node by qualname parts, returning (node, parents_chain).
+
+    The qualname is resolved purely structurally, without executing code.
+    Supported containers: module, class bodies, and function bodies (nested defs).
+    """
+    if not isinstance(tree, ast.Module):
+        raise ValueError("Expected an ast.Module for qualname resolution")
+
+    parents: list[ast.AST] = []
+    current: ast.AST = tree
+    for part in qual_parts:
+        body: list[ast.stmt] | None = getattr(current, "body", None)
+        if body is None:
+            raise ValueError(
+                f"Cannot resolve qualname {'.'.join(qual_parts)!r}: "
+                f"{type(current).__name__} has no body"
+            )
+        found = _find_named_def_in_body(body, part)
+        if found is None:
+            raise ValueError(
+                f"Callable {'.'.join(qual_parts)!r} not found in module"
+            )
+        parents.append(current)
+        current = found
+
+    return current, parents
+
+
+def _module_qualifier(file_path: Path, sut_root: Path) -> str:
+    """Convert file path into module-style qualifier (e.g. app/agent.py -> app.agent)."""
+    mod_path = file_path.relative_to(sut_root.parent)
+    parts = list(mod_path.parts)
+    if parts[-1] == "__init__.py":
+        parts = parts[:-1]
+    else:
+        parts[-1] = parts[-1].replace(".py", "")
+    return ".".join(parts)
+
+
+def _module_qualifier_from_root(file_path: Path, project_root: Path) -> str:
+    """Convert file path into module-style qualifier relative to a project root.
+
+    Example:
+        project_root=/repo/merit-travelops-demo
+        file_path=/repo/merit-travelops-demo/app/agent.py
+        -> "app.agent"
+    """
+    mod_path = file_path.relative_to(project_root)
+    parts = list(mod_path.parts)
+    if parts[-1] == "__init__.py":
+        parts = parts[:-1]
+    else:
+        parts[-1] = parts[-1].replace(".py", "")
+    return ".".join(parts)
+
+
+def _infer_project_root(file_path: Path) -> Path:
+    """Infer a sensible project root for callable-rooted parsing.
+
+    Walks upward looking for common Python project markers.
+    Falls back to the file's parent directory if nothing is found.
+    """
+    markers = ("pyproject.toml", "setup.py", "setup.cfg", "requirements.txt")
+    for parent in [file_path.parent, *file_path.parents]:
+        for m in markers:
+            if (parent / m).exists():
+                return parent
+    return file_path.parent
+
+
+def _build_symbol_index(modules: list[dict[str, Any]], project_root: Path) -> dict[str, set[str]]:
+    """Build a multi-mapping of symbol key -> set of qualified names.
+
+    Keys include:
+      - function name: "foo"
+      - class name: "MyClass"
+      - method qual key: "MyClass.run"
+      - method short key: "run" (for unique-name heuristic only)
+    """
+    index: dict[str, set[str]] = defaultdict(set)
+
+    for mod in modules:
+        file_path = Path(mod["path"])
+        mod_qual = _module_qualifier_from_root(file_path, project_root)
+
+        for func in mod.get("functions", []):
+            q = f"{mod_qual}:{func['name']}"
+            index[func["name"]].add(q)
+
+        for cls in mod.get("classes", []):
+            cq = f"{mod_qual}:{cls['name']}"
+            index[cls["name"]].add(cq)
+
+            for method in cls.get("methods", []):
+                key = f"{cls['name']}.{method['name']}"
+                mq = f"{mod_qual}:{key}"
+                index[key].add(mq)
+                # Also index bare method name to enable unique-name resolution for attribute calls.
+                index[method["name"]].add(mq)
+
+    return dict(index)
+
+
+def _resolve_unique(index: dict[str, set[str]], key: str) -> str | None:
+    """Resolve a symbol key to a unique qualified name, else None."""
+    cands = index.get(key)
+    if not cands:
+        return None
+    if len(cands) == 1:
+        return next(iter(cands))
+    return None
+
+
+def _resolve_callee_qualified(
+    call_name: str,
+    index: dict[str, set[str]],
+    current_class: str | None = None,
+) -> str | None:
+    """Resolve a call name to a unique qualified SUT symbol (or None).
+
+    Heuristics:
+      - self.method  (where current_class is known) -> Class.method
+      - exact match
+      - last token (attribute call): obj.method -> method (only if unique in project)
+    """
+    parts = call_name.split(".")
+
+    # Strict self.<method> resolution for intra-class calls
+    if call_name.startswith("self.") and current_class and len(parts) == 2:
+        maybe = _resolve_unique(index, f"{current_class}.{parts[1]}")
+        if maybe:
+            return maybe
+
+    # Exact match (rare but possible if call collector yields simple names)
+    maybe = _resolve_unique(index, call_name)
+    if maybe:
+        return maybe
+
+    # Attribute/method call: resolve by last token if unique in project
+    if len(parts) > 1:
+        maybe = _resolve_unique(index, parts[-1])
+        if maybe:
+            return maybe
+
+    # Simple name call: resolve if unique
+    return _resolve_unique(index, call_name)
+
+
+def _resolve_call_graph_rooted(
+    modules: list[dict[str, Any]],
+    project_root: Path,
+    index: dict[str, set[str]],
+) -> list[dict[str, str]]:
+    """Resolve call graph edges across a project rooted at project_root.
+
+    Adds an edge only when the callee resolves uniquely to a SUT symbol.
+    """
+    edges: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for mod in modules:
+        file_path = Path(mod["path"])
+        mod_qual = _module_qualifier_from_root(file_path, project_root)
+
+        for func in mod.get("functions", []):
+            caller = f"{mod_qual}:{func['name']}"
+            for call_name in func.get("calls", []):
+                callee = _resolve_callee_qualified(call_name, index)
+                if not callee:
+                    continue
+                key = (caller, callee)
+                if key not in seen:
+                    seen.add(key)
+                    edges.append({"caller": caller, "callee": callee})
+
+        for cls in mod.get("classes", []):
+            for method in cls.get("methods", []):
+                caller = f"{mod_qual}:{cls['name']}.{method['name']}"
+                for call_name in method.get("calls", []):
+                    callee = _resolve_callee_qualified(call_name, index, current_class=cls["name"])
+                    if not callee:
+                        continue
+                    key = (caller, callee)
+                    if key not in seen:
+                        seen.add(key)
+                        edges.append({"caller": caller, "callee": callee})
+
+    return edges
 
 
 # ---------------------------------------------------------------------------
@@ -404,14 +640,14 @@ def _resolve_call_graph(
 
     for mod in modules:
         for func in mod["functions"]:
-            caller = symbol_table.get(func["name"], func["name"])
+            caller = str(symbol_table.get(func["name"], func["name"]))
             for call_name in func["calls"]:
                 _add_edge(edges, seen, caller, call_name, symbol_table)
 
         for cls in mod["classes"]:
             for method in cls["methods"]:
                 caller_key = f"{cls['name']}.{method['name']}"
-                caller = symbol_table.get(caller_key, caller_key)
+                caller = str(symbol_table.get(caller_key, caller_key))
                 for call_name in method["calls"]:
                     _add_edge(edges, seen, caller, call_name, symbol_table, cls["name"])
 
@@ -537,6 +773,184 @@ def parse_sut(directory: str | Path) -> dict[str, Any]:
         "sut_root": str(directory),
         "modules": modules,
         "symbol_table": symbol_table,
+        "call_graph": call_graph,
+        "pipeline": pipeline,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Callable-rooted parser
+# ---------------------------------------------------------------------------
+
+def parse_callable(callable_ref: str) -> dict[str, Any]:
+    """Parse a single Python file and return analysis rooted at a callable.
+
+    The callable is identified by a reference string: "{file.py}:{qualname}".
+    The resulting structure is filtered to only include definitions that are
+    reachable from the entry callable via intra-file call graph edges.
+    """
+    file_path, qual_parts = _parse_callable_ref(callable_ref)
+    project_root = _infer_project_root(file_path).resolve()
+
+    py_files = _find_python_files(project_root)
+    modules: list[dict[str, Any]] = []
+    for f in py_files:
+        try:
+            modules.append(parse_module(f))
+        except SyntaxError:
+            continue
+
+    index = _build_symbol_index(modules, project_root)
+    call_graph_all = _resolve_call_graph_rooted(modules, project_root, index)
+
+    # Locate the entry node to determine whether this is a function/method/class
+    source = file_path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(file_path))
+    entry_node, parents = _find_qualname_node(tree, qual_parts)
+
+    entry_type: str
+    entry_qualname: str
+    entry_pipeline_target: tuple[str, str] | None = None  # (class_name, method_name) for methods
+
+    if isinstance(entry_node, ast.ClassDef):
+        entry_type = "class"
+        entry_qualname = f"{_module_qualifier_from_root(file_path, project_root)}:{entry_node.name}"
+        # For reachability/pipeline, prefer __call__ then run if present
+        preferred = None
+        for mname in ("__call__", "run"):
+            if any(
+                isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and s.name == mname
+                for s in entry_node.body
+            ):
+                preferred = mname
+                break
+        if preferred:
+            entry_pipeline_target = (entry_node.name, preferred)
+    elif isinstance(entry_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        # If parent is a class, treat as method; otherwise function
+        parent = parents[-1] if parents else None
+        if isinstance(parent, ast.ClassDef):
+            entry_type = "method"
+            entry_qualname = f"{_module_qualifier_from_root(file_path, project_root)}:{parent.name}.{entry_node.name}"
+            entry_pipeline_target = (parent.name, entry_node.name)
+        else:
+            entry_type = "function"
+            entry_qualname = f"{_module_qualifier_from_root(file_path, project_root)}:{entry_node.name}"
+    else:
+        raise ValueError(
+            f"Resolved node for {callable_ref!r} is not a callable definition: "
+            f"{type(entry_node).__name__}"
+        )
+
+    # Choose graph root for reachability: method preferred for class entry
+    graph_root = entry_qualname
+    if entry_type == "class" and entry_pipeline_target:
+        cname, mname = entry_pipeline_target
+        graph_root = f"{_module_qualifier_from_root(file_path, project_root)}:{cname}.{mname}"
+
+    # Compute reachable set by BFS over call graph starting at root
+    adjacency: dict[str, list[str]] = {}
+    for edge in call_graph_all:
+        adjacency.setdefault(edge["caller"], []).append(edge["callee"])
+
+    reachable: set[str] = set()
+    queue: list[str] = [graph_root]
+    while queue:
+        cur = queue.pop(0)
+        if cur in reachable:
+            continue
+        reachable.add(cur)
+        for nxt in adjacency.get(cur, []):
+            if nxt not in reachable:
+                queue.append(nxt)
+
+    # Always include the class itself if the entry is a class/method
+    if entry_type == "class":
+        reachable.add(entry_qualname)
+    if entry_type == "method" and isinstance(parents[-1], ast.ClassDef):
+        reachable.add(f"{_module_qualifier_from_root(file_path, project_root)}:{parents[-1].name}")
+
+    # Filter call graph down to reachable portion
+    call_graph = [e for e in call_graph_all if e["caller"] in reachable and e["callee"] in reachable]
+
+    # Filter module definitions down to reachable portion (callable-rooted tree)
+    filtered_modules: list[dict[str, Any]] = []
+    for mod in modules:
+        mpath = Path(mod["path"])
+        mqual = _module_qualifier_from_root(mpath, project_root)
+
+        filtered_functions: list[dict[str, Any]] = []
+        for func in mod.get("functions", []):
+            qn = f"{mqual}:{func['name']}"
+            if qn in reachable:
+                filtered_functions.append(func)
+
+        filtered_classes: list[dict[str, Any]] = []
+        for cls in mod.get("classes", []):
+            cls_qn = f"{mqual}:{cls['name']}"
+            method_filtered: list[dict[str, Any]] = []
+            for m in cls.get("methods", []):
+                m_qn = f"{mqual}:{cls['name']}.{m['name']}"
+                if m_qn in reachable:
+                    method_filtered.append(m)
+
+            if cls_qn in reachable or method_filtered:
+                kept = dict(cls)
+                kept["methods"] = method_filtered
+                filtered_classes.append(kept)
+
+        if filtered_functions or filtered_classes:
+            kept_mod = dict(mod)
+            kept_mod["functions"] = filtered_functions
+            kept_mod["classes"] = filtered_classes
+            filtered_modules.append(kept_mod)
+
+    # Pipeline steps for entry callable (function/method), or preferred method for class entry
+    pipeline: dict[str, Any] | None = None
+    pipeline_callable: str | None = None
+    pipeline_node: ast.AST | None = None
+
+    if entry_type in ("function", "method"):
+        pipeline_node = entry_node
+        pipeline_callable = entry_qualname.split(":", 1)[1]
+    elif entry_type == "class" and entry_pipeline_target:
+        cname, mname = entry_pipeline_target
+        pipeline_callable = f"{cname}.{mname}"
+        # Find method node again inside class
+        for stmt in entry_node.body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)) and stmt.name == mname:
+                pipeline_node = stmt
+                break
+
+    if isinstance(pipeline_node, (ast.FunctionDef, ast.AsyncFunctionDef)) and pipeline_callable:
+        pipeline = {
+            "callable": pipeline_callable,
+            "file": str(file_path),
+            "line_start": pipeline_node.lineno,
+            "line_end": _get_end_lineno(pipeline_node),
+            "steps": _extract_pipeline_steps(pipeline_node.body),
+        }
+
+    entry_doc = ast.get_docstring(entry_node) if isinstance(
+        entry_node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    ) else None
+
+    entrypoint = {
+        "type": entry_type,
+        "callable": entry_qualname.split(":", 1)[1],
+        "qualified": entry_qualname,
+        "file": str(file_path),
+        "line_start": getattr(entry_node, "lineno", 0),
+        "line_end": _get_end_lineno(entry_node),
+        "docstring": entry_doc,
+    }
+
+    return {
+        "sut_root": str(project_root),
+        "display_root": str(project_root),
+        "entrypoint": entrypoint,
+        "modules": filtered_modules,
+        "symbol_table": {},  # legacy field; not used by formatter in callable-rooted mode
         "call_graph": call_graph,
         "pipeline": pipeline,
     }

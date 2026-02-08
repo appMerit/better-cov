@@ -10,12 +10,13 @@ A **contract** is any explicit or implicit requirement, constraint, or expectati
 
 Each `ContractObligation` groups related testable rules (`ObligationRule` objects):
 
-**Validator Types:**
-- **jsonschema**: Pydantic models, JSON structures, data schemas
-- **deterministic_check**: Boolean checks, format validation, field presence
-- **test_command**: pytest tests, unit tests that can be executed
-- **rubric**: LLM-judged quality (tone, helpfulness, accuracy)
-- **manual**: Requirements that need human verification
+**How to Express “Validator Type” in the Minimal Schema:**
+The current schema is intentionally minimal and does not have a `validator` field.
+Instead, encode the evaluation mechanism inside `ObligationRule.rule` using a clear prefix, for example:
+- `jsonschema: TravelOpsResponse.model_validate(payload) succeeds`
+- `deterministic_check: 0.0 <= temperature <= 1.0`
+- `test_command: pytest tests/test_schemas.py::test_response_validation`
+- `rubric: the response does not fabricate facts not present in context`
 
 **Enforcement Levels:**
 - **hard**: Must pass or system fails (e.g., schema validation)
@@ -53,35 +54,35 @@ cp .env.example .env
 
 ### Basic Usage
 
-Run contract discovery on a codebase:
+Run contract discovery rooted at a callable entrypoint (`{file.py}:{qualname}`):
 
 ```bash
 # Using uv (recommended)
-uv run python run_discovery.py merit-travelops-demo/app
+uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
 
 # Or directly with python
-python run_discovery.py merit-travelops-demo/app
+python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
 ```
 
 ### Advanced Options
 
 ```bash
 # Specify output file
-uv run python run_discovery.py merit-travelops-demo/app -o results/contracts.json
+uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ -o results/contracts.json
 
 # Increase max turns for thorough analysis
-uv run python run_discovery.py merit-travelops-demo/app --max-turns 150
+uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ --max-turns 150
 
 # Quiet mode (no progress logging)
-uv run python run_discovery.py merit-travelops-demo/app --quiet
+uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ --quiet
 
 # Debug mode (detailed logging)
-uv run python run_discovery.py merit-travelops-demo/app --debug
+uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__ --debug
 ```
 
 ### Command Line Arguments
 
-- `codebase_path`: Path to the codebase to analyze (required)
+- `callable_ref`: Callable reference string in the form `{file.py}:{qualname}` (required)
 - `-o, --output`: Path to save results JSON file (default: `contracts_output.json`)
 - `--max-turns`: Maximum turns for agent (default: 50)
 - `--quiet`: Suppress progress logging
@@ -93,41 +94,21 @@ The tool outputs a `ContractDiscoveryResult` JSON file with executable `Contract
 
 ```json
 {
-  "codebase_path": "path/to/analyzed/code",
-  "total_contracts": 10,
   "contracts": [
     {
-      "id": "contract.api-response.v1",
-      "version": "1.0.0",
       "name": "API Response Contract",
-      "task_context": {
-        "goal": "Return structured travel planning response",
-        "inputs": {},
-        "constraints": ["Must be valid JSON", "All required fields present"]
-      },
-      "output_contract": {
-        "format": "json",
-        "schema_definition": {},
-        "required_fields": ["assistant_message", "itinerary", "session_id"]
-      },
       "obligations": [
         {
           "id": "OBL-001",
+          "location": "app/schemas.py:10-88",
           "description": "Response must match TravelOpsResponse schema",
-          "applies_to": ["final_response"],
-          "rule": "pydantic_validate(response, TravelOpsResponse) == success",
-          "validator": "jsonschema",
+          "rule": "jsonschema: TravelOpsResponse.model_validate(response) succeeds",
           "enforcement": "hard",
           "severity": "critical"
         }
-      ],
-      "acceptance_policy": {
-        "require_all_hard_obligations": true,
-        "block_on": ["critical"]
-      }
+      ]
     }
-  ],
-  "summary": "Found 10 contracts with 28 obligations: 8 jsonschema, 12 deterministic_check, 6 rubric, 2 test_command validators"
+  ]
 }
 ```
 
@@ -139,8 +120,10 @@ better-cov/
 │   ├── models/
 │   │   └── contract.py          # Contract data models
 │   └── services/
+│       ├── ast_analyzer/        # Callable-rooted AST mapper (wrapper import path)
 │       ├── contract_discovery/
 │       │   ├── agent.py         # Main agent implementation
+│       │   ├── ast_analyzer/    # AST mapper implementation (parser/formatter)
 │       │   └── prompts.py       # System prompts for agent
 │       └── llm_driver/
 │           ├── anthropic_handler.py  # Claude SDK wrapper
@@ -169,12 +152,12 @@ better-cov/
 ## Example: Analyzing merit-travelops-demo
 
 ```bash
-uv run python run_discovery.py merit-travelops-demo/app
+uv run python run_discovery.py merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
 ```
 
 You'll see real-time progress as the agent works:
 ```
-🔍 Starting contract discovery for: merit-travelops-demo/app
+🔍 Starting contract discovery for: merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__
 📊 Max turns: 50
 
 🤖 Agent starting analysis...
@@ -189,14 +172,14 @@ Expected findings:
 - **Hard Contracts**: 
   - `TravelOpsResponse` schema (critical)
   - `Itinerary` structure (critical)
-  - Date format `YYYY-MM-DD` (high)
-  - Type hints in function signatures (medium)
+  - Date format `YYYY-MM-DD` (major)
+  - Type hints in function signatures (minor)
   
 - **Soft Contracts**:
-  - "Be helpful travel planning AI" (medium)
+  - "Be helpful travel planning AI" (minor)
   - "Never invent facts not in context" (critical)
-  - "Always cite knowledge base" (high)
-  - "Respect user preferences" (medium)
+  - "Always cite knowledge base" (major)
+  - "Respect user preferences" (minor)
 
 ## Use Cases
 

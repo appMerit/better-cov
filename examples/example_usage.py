@@ -1,7 +1,6 @@
 """Example: Using the Contract Discovery Agent programmatically."""
 
 import asyncio
-from pathlib import Path
 
 from anthropic import AsyncAnthropic
 
@@ -21,40 +20,35 @@ async def main():
     # Create the contract discovery agent
     agent = ContractDiscoveryAgent(llm_client)
     
-    # Run discovery on the merit-travelops-demo codebase
-    codebase_path = Path("merit-travelops-demo/app")
+    # Run discovery rooted at a specific callable (file.py:qualname)
+    callable_ref = "merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__"
     
-    print(f"Analyzing codebase: {codebase_path}")
+    print(f"Analyzing entry callable: {callable_ref}")
     
     result = await agent.discover_contracts(
-        codebase_path=codebase_path,
+        callable_ref=callable_ref,
         max_turns=50
     )
     
-    # Print results
-    print(f"\nFound {result.total_contracts} contracts!")
-    print(f"\nSummary: {result.summary}")
-    
-    # Count obligations by validator type
-    validator_counts = {}
-    enforcement_counts = {"hard": 0, "soft": 0}
-    severity_counts = {}
+    # Count obligations by enforcement and severity (validator is encoded in `rule`)
+    enforcement_counts: dict[str, int] = {"hard": 0, "soft": 0}
+    severity_counts: dict[str, int] = {}
     total_obligations = 0
     
     for contract in result.contracts:
         for obligation in contract.obligations:
             total_obligations += 1
-            validator_counts[obligation.validator] = validator_counts.get(obligation.validator, 0) + 1
-            enforcement_counts[obligation.enforcement] += 1
-            severity_counts[obligation.severity] = severity_counts.get(obligation.severity, 0) + 1
+            enforcement_counts[str(obligation.enforcement)] = (
+                enforcement_counts.get(str(obligation.enforcement), 0) + 1
+            )
+            severity_counts[str(obligation.severity)] = (
+                severity_counts.get(str(obligation.severity), 0) + 1
+            )
     
     print(f"\n{'='*80}")
     print(f"OBLIGATION STATISTICS")
     print('='*80)
     print(f"Total Obligations: {total_obligations}")
-    print(f"\nBy Validator:")
-    for validator, count in sorted(validator_counts.items()):
-        print(f"  - {validator}: {count}")
     print(f"\nBy Enforcement:")
     for enforcement, count in enforcement_counts.items():
         print(f"  - {enforcement}: {count}")
@@ -68,29 +62,15 @@ async def main():
     print('='*80)
     
     for i, contract in enumerate(result.contracts[:3], 1):
-        print(f"\n{i}. {contract.name or contract.id} (v{contract.version})")
-        print(f"   ID: {contract.id}")
-        print(f"   Goal: {contract.task_context.goal}")
-        print(f"   Output Format: {contract.output_contract.format}")
+        print(f"\n{i}. {contract.name}")
         print(f"   Obligations: {len(contract.obligations)}")
         
         for j, obl in enumerate(contract.obligations[:3], 1):
             print(f"\n      {j}. {obl.id}: {obl.description}")
-            print(f"         Validator: {obl.validator}")
+            print(f"         Location: {obl.location}")
             print(f"         Enforcement: {obl.enforcement}")
             print(f"         Severity: {obl.severity}")
             print(f"         Rule: {obl.rule[:100]}...")
-    
-    # Show acceptance policies
-    print(f"\n{'='*80}")
-    print(f"ACCEPTANCE POLICIES")
-    print('='*80)
-    
-    for contract in result.contracts[:3]:
-        policy = contract.acceptance_policy
-        print(f"\n{contract.name or contract.id}:")
-        print(f"  - Require all hard obligations: {policy.require_all_hard_obligations}")
-        print(f"  - Block on severities: {', '.join(str(s) for s in policy.block_on)}")
 
 
 if __name__ == "__main__":
