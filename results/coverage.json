@@ -1,0 +1,42 @@
+{
+  "codebase_path": "/Users/nikitashirobokov/me/hackathon/merit-travelops-demo",
+  "callable_ref": "merit-travelops-demo/tests/merit_travelops_contract.py:TravelOpsSUT.__call__",
+  "uncovered_obligation_ids": [
+    "OBL-SCHEMA-004",
+    "OBL-GROUND-002",
+    "OBL-CONFIG-003",
+    "OBL-PROMPT-001",
+    "OBL-PROMPT-002",
+    "OBL-POST-002",
+    "OBL-POST-003",
+    "OBL-POST-004",
+    "OBL-ROUTE-001",
+    "OBL-ROUTE-002",
+    "OBL-TOOL-001",
+    "OBL-TOOL-002",
+    "OBL-TOOL-003",
+    "OBL-TOOL-004",
+    "OBL-TOOL-005",
+    "OBL-STATE-001",
+    "OBL-STATE-002",
+    "OBL-LLM-001",
+    "OBL-LLM-002",
+    "OBL-LLM-003",
+    "OBL-AGENT-002",
+    "OBL-AGENT-003",
+    "OBL-TEST-002"
+  ],
+  "discovered_test_refs": [
+    "tests/merit_travelops_contract.py::merit_contract_json_schema",
+    "tests/merit_travelops_grounding.py::merit_grounding_enforcement",
+    "tests/merit_travelops_determinism.py::merit_determinism_config",
+    "tests/merit_travelops_prompting.py::merit_prompt_assembly_role_mixing",
+    "tests/merit_travelops_routing.py::merit_tool_routing_selection",
+    "tests/merit_travelops_postprocess.py::merit_postprocess_field_mapping",
+    "tests/merit_travelops_control_flow.py::merit_control_flow_termination",
+    "tests/merit_travelops_state.py::merit_state_memory_management",
+    "tests/merit_travelops_tool_args.py::merit_tool_argument_construction",
+    "tests/merit_travelops_retrieval.py::merit_retrieval_relevance"
+  ],
+  "notes": "Coverage analysis identifies 23 uncovered obligations out of 54 total. Covered obligations include: basic schema structure validation (OBL-SCHEMA-001/002/003), grounding enforcement via Merit predicates (OBL-GROUND-001/003), configuration temperature and max steps checks (OBL-CONFIG-001/002/004), prompt coherence validation (OBL-PROMPT-003), postprocessing type validation (OBL-POST-001), agent orchestration control flow (OBL-AGENT-001), and test contract validation (OBL-TEST-001). Uncovered obligations require more granular unit/integration testing: date format regex validation, KB citation enforcement, max steps termination logic, message ordering assertions, system prompt content verification, default value injection for missing fields, LLM response JSON parsing, routing keyword detection, tool signature validation, budget filtering logic, session state defaults, preference extraction from prompts, LLM client creation logic, JSON mode enforcement, stub LLM determinism, session_id UUID generation, minimal itinerary fallback creation, and termination reason validation."
+}

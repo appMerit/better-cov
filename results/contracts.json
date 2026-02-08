@@ -1,0 +1,339 @@
+{
+  "contracts": [
+    {
+      "name": "Response Schema Contract",
+      "obligations": [
+        {
+          "id": "OBL-SCHEMA-001",
+          "location": "app/schemas.py:63-68",
+          "description": "TravelOpsResponse must contain assistant_message (string), itinerary (dict), and session_id (string)",
+          "rule": "jsonschema: TravelOpsResponse.model_validate(response) succeeds AND validate_response_schema(response.model_dump()) returns True",
+          "enforcement": "hard",
+          "severity": "critical"
+        },
+        {
+          "id": "OBL-SCHEMA-002",
+          "location": "app/schemas.py:51-60",
+          "description": "Itinerary must have destination (Location with city/country), dates (DateRange with start_date/end_date), and optional flights/hotels/activities lists",
+          "rule": "jsonschema: Itinerary.model_validate(itinerary_dict) succeeds",
+          "enforcement": "hard",
+          "severity": "critical"
+        },
+        {
+          "id": "OBL-SCHEMA-003",
+          "location": "tests/fixtures/expected_schemas.py:6-43",
+          "description": "Itinerary destination must be dict with 'city' and 'country' fields; dates must be dict with 'start_date' and 'end_date' fields",
+          "rule": "deterministic_check: isinstance(itinerary['destination'], dict) AND 'city' in itinerary['destination'] AND 'country' in itinerary['destination'] AND isinstance(itinerary['dates'], dict) AND 'start_date' in itinerary['dates'] AND 'end_date' in itinerary['dates']",
+          "enforcement": "hard",
+          "severity": "critical"
+        },
+        {
+          "id": "OBL-SCHEMA-004",
+          "location": "app/schemas.py:18-19",
+          "description": "Date fields must be in YYYY-MM-DD format",
+          "rule": "deterministic_check: re.match(r'^\\d{4}-\\d{2}-\\d{2}$', date_string) for all date fields",
+          "enforcement": "hard",
+          "severity": "major"
+        }
+      ]
+    },
+    {
+      "name": "Grounding and Factuality Contract",
+      "obligations": [
+        {
+          "id": "OBL-GROUND-001",
+          "location": "app/prompting.py:95-96",
+          "description": "Never invent facts not in the provided context",
+          "rule": "rubric: Response text must not contain factual claims unsupported by knowledge base context. Use Merit's has_unsupported_facts predicate to validate.",
+          "enforcement": "hard",
+          "severity": "critical"
+        },
+        {
+          "id": "OBL-GROUND-002",
+          "location": "app/prompting.py:96",
+          "description": "Always cite knowledge base when referencing policies or facts",
+          "rule": "rubric: When stating facts about visa requirements, tipping, weather, budget, or transport, response should reference or be consistent with KB_DOCUMENTS in app/retrieval.py:9-60",
+          "enforcement": "soft",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-GROUND-003",
+          "location": "tests/merit_travelops_grounding.py:46-63",
+          "description": "For queries requiring KB context, responses should not be generic without acknowledging knowledge base limitations",
+          "rule": "deterministic_check: if context_required AND response contains generic phrases ('i don\\'t have', 'i cannot provide'), THEN response must contain 'knowledge base' or 'provided information'",
+          "enforcement": "soft",
+          "severity": "minor"
+        }
+      ]
+    },
+    {
+      "name": "Configuration and Determinism Contract",
+      "obligations": [
+        {
+          "id": "OBL-CONFIG-001",
+          "location": "app/config.py:22",
+          "description": "Temperature must be set to 0.0 for deterministic outputs",
+          "rule": "deterministic_check: config.temperature == 0.0",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-CONFIG-002",
+          "location": "app/config.py:23",
+          "description": "Max agent steps must not exceed 5",
+          "rule": "deterministic_check: config.max_agent_steps <= 5",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-CONFIG-003",
+          "location": "app/agent.py:148-150",
+          "description": "Agent must terminate when step count reaches max_agent_steps",
+          "rule": "deterministic_check: if step >= config.max_agent_steps THEN should_stop returns (True, 'max_steps_reached')",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-CONFIG-004",
+          "location": "tests/merit_travelops_determinism.py:48-64",
+          "description": "For same input prompt, key fields (destination city) should be consistent across multiple runs with temperature=0",
+          "rule": "deterministic_check: with temperature=0.0, repeated calls with same prompt produce same destination city",
+          "enforcement": "soft",
+          "severity": "minor"
+        }
+      ]
+    },
+    {
+      "name": "Prompt Assembly Contract",
+      "obligations": [
+        {
+          "id": "OBL-PROMPT-001",
+          "location": "app/prompting.py:25-65",
+          "description": "Messages must be assembled in order: system prompt, context (if available), session memory (if available), tool results (if available), user message",
+          "rule": "deterministic_check: messages[0]['role'] == 'system' AND messages[-1]['role'] == 'user'",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-PROMPT-002",
+          "location": "app/prompting.py:68-99",
+          "description": "System prompt must define output format as JSON with assistant_message and itinerary fields",
+          "rule": "deterministic_check: 'assistant_message' in build_system_prompt() AND 'itinerary' in build_system_prompt() AND 'JSON' in build_system_prompt()",
+          "enforcement": "hard",
+          "severity": "critical"
+        },
+        {
+          "id": "OBL-PROMPT-003",
+          "location": "tests/merit_travelops_prompting.py:43-49",
+          "description": "Response must be coherent and not contain corruption artifacts from role mixing",
+          "rule": "deterministic_check: len(response.assistant_message) > 10 AND NOT any(indicator in response.assistant_message.lower() for indicator in ['ignore', 'random', 'chatbot'])",
+          "enforcement": "hard",
+          "severity": "major"
+        }
+      ]
+    },
+    {
+      "name": "Postprocessing and Normalization Contract",
+      "obligations": [
+        {
+          "id": "OBL-POST-001",
+          "location": "app/postprocess.py:13-59",
+          "description": "Itineraries must be validated against Pydantic schema; if validation fails, salvage required fields with defaults",
+          "rule": "deterministic_check: normalize_itinerary attempts Itinerary.model_validate; on ValidationError, ensures destination, dates, flights, hotels, activities fields are present",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-POST-002",
+          "location": "app/postprocess.py:28-36",
+          "description": "If dates are missing or None, default to start_date='2024-01-01' and end_date='2024-01-01'",
+          "rule": "deterministic_check: if raw_itinerary['dates'] is None or invalid THEN normalized['dates'] == {'start_date': '2024-01-01', 'end_date': '2024-01-01'}",
+          "enforcement": "hard",
+          "severity": "minor"
+        },
+        {
+          "id": "OBL-POST-003",
+          "location": "app/postprocess.py:38-46",
+          "description": "If destination is missing or None, default to city='Unknown' and country='Unknown'",
+          "rule": "deterministic_check: if raw_itinerary['destination'] is None or invalid THEN normalized['destination'] == {'city': 'Unknown', 'country': 'Unknown'}",
+          "enforcement": "hard",
+          "severity": "minor"
+        },
+        {
+          "id": "OBL-POST-004",
+          "location": "app/postprocess.py:62-96",
+          "description": "LLM response must be parsed to extract assistant_message and itinerary from JSON content, with fallback for markdown-wrapped JSON",
+          "rule": "deterministic_check: parse_llm_response returns tuple(str, dict) with assistant_message and itinerary extracted from JSON or markdown",
+          "enforcement": "hard",
+          "severity": "major"
+        }
+      ]
+    },
+    {
+      "name": "Routing Contract",
+      "obligations": [
+        {
+          "id": "OBL-ROUTE-001",
+          "location": "app/router.py:14-16",
+          "description": "Route must detect tool needs based on keywords: 'weather' triggers get_weather, 'hotel'/'accommodation' triggers search_hotels, 'flight' triggers search_flights",
+          "rule": "deterministic_check: 'weather' in prompt.lower() => 'get_weather' in routing_decision['tools']; 'hotel' in prompt.lower() => 'search_hotels' in routing_decision['tools']; 'flight' in prompt.lower() => 'search_flights' in routing_decision['tools']",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-ROUTE-002",
+          "location": "app/router.py:18-30",
+          "description": "Route must detect retrieval needs based on keywords: visa, tipping, culture, budget, policy, requirement, custom",
+          "rule": "deterministic_check: any(keyword in prompt.lower() for keyword in ['visa', 'tipping', 'culture', 'budget', 'policy', 'requirement', 'custom']) => routing_decision['needs_retrieval'] == True",
+          "enforcement": "hard",
+          "severity": "major"
+        }
+      ]
+    },
+    {
+      "name": "Tool Execution Contract",
+      "obligations": [
+        {
+          "id": "OBL-TOOL-001",
+          "location": "app/agent.py:100-129",
+          "description": "Tool execution must catch exceptions and return error messages without failing the agent run",
+          "rule": "deterministic_check: if tool execution raises Exception THEN result contains {'tool_name': tool_name, 'output': f'Error: {str(e)}'}",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-TOOL-002",
+          "location": "app/tools/flights.py:8-71",
+          "description": "search_flights must accept from_location, to_location, date, and optional budget parameters",
+          "rule": "deterministic_check: search_flights signature matches (from_location: str, to_location: str, date: str, budget: str | None)",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-TOOL-003",
+          "location": "app/tools/hotels.py:8-62",
+          "description": "search_hotels must accept location, check_in, check_out, and optional budget parameters",
+          "rule": "deterministic_check: search_hotels signature matches (location: str, check_in: str, check_out: str, budget: str | None)",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-TOOL-004",
+          "location": "app/tools/flights.py:54-59",
+          "description": "Flights must be filtered by budget if provided: 'low'/'budget' keeps price < 800, 'high'/'premium' keeps price > 1000",
+          "rule": "deterministic_check: if 'low' in budget.lower() or 'budget' in budget.lower() THEN all(f['price'] < 800 for f in result['flights']); if 'high' in budget.lower() or 'premium' in budget.lower() THEN all(f['price'] > 1000 for f in result['flights'])",
+          "enforcement": "soft",
+          "severity": "minor"
+        },
+        {
+          "id": "OBL-TOOL-005",
+          "location": "app/tools/hotels.py:44-50",
+          "description": "Hotels must be filtered by budget if provided: 'low'/'budget' keeps price < 150, 'high'/'luxury' keeps price > 300",
+          "rule": "deterministic_check: if 'low' in budget.lower() or 'budget' in budget.lower() THEN all(h['price_per_night'] < 150 for h in result['hotels']); if 'high' in budget.lower() or 'luxury' in budget.lower() THEN all(h['price_per_night'] > 300 for h in result['hotels'])",
+          "enforcement": "soft",
+          "severity": "minor"
+        }
+      ]
+    },
+    {
+      "name": "Session State Contract",
+      "obligations": [
+        {
+          "id": "OBL-STATE-001",
+          "location": "app/state.py:11-17",
+          "description": "load_session must return dict with 'preferences' and 'history' keys, defaulting to empty values if session_id not found",
+          "rule": "deterministic_check: load_session(session_id) returns {'preferences': {}, 'history': []} if session_id not in _SESSION_STORE",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-STATE-002",
+          "location": "app/state.py:28-61",
+          "description": "update_session_memory must extract preferences from prompt: budget (from $amount), seat preference (window/aisle)",
+          "rule": "deterministic_check: if 'budget' in prompt AND '$' in prompt THEN prefs['budget'] extracted; if 'window seat' in prompt THEN prefs['seat_preference'] = 'window'; if 'aisle seat' in prompt THEN prefs['seat_preference'] = 'aisle'",
+          "enforcement": "soft",
+          "severity": "minor"
+        }
+      ]
+    },
+    {
+      "name": "LLM Client Contract",
+      "obligations": [
+        {
+          "id": "OBL-LLM-001",
+          "location": "app/llm_client.py:218-230",
+          "description": "LLM client must be created based on config.llm_provider: 'openai' requires OPENAI_API_KEY, otherwise use StubLLMClient",
+          "rule": "deterministic_check: if config.llm_provider == 'openai' AND not config.openai_api_key THEN raise ValueError; if config.llm_provider != 'openai' THEN return StubLLMClient",
+          "enforcement": "hard",
+          "severity": "critical"
+        },
+        {
+          "id": "OBL-LLM-002",
+          "location": "app/llm_client.py:179-184",
+          "description": "OpenAI client must use JSON mode (response_format: json_object) when not using tools",
+          "rule": "deterministic_check: if tools is None THEN kwargs['response_format'] == {'type': 'json_object'}",
+          "enforcement": "hard",
+          "severity": "major"
+        },
+        {
+          "id": "OBL-LLM-003",
+          "location": "app/llm_client.py:20-23",
+          "description": "Stub LLM must generate deterministic responses based on message hash",
+          "rule": "deterministic_check: hash(messages) -> consistent response across runs",
+          "enforcement": "hard",
+          "severity": "major"
+        }
+      ]
+    },
+    {
+      "name": "Agent Orchestration Contract",
+      "obligations": [
+        {
+          "id": "OBL-AGENT-001",
+          "location": "app/agent.py:25-98",
+          "description": "Agent.run must orchestrate in order: load session (if enabled) -> route -> retrieve (if needed) -> execute tools (if needed) -> build messages -> generate LLM response -> parse and normalize -> create TravelOpsResponse -> update session",
+          "rule": "test_command: pytest tests/merit_travelops_control_flow.py -k merit_control_flow",
+          "enforcement": "hard",
+          "severity": "critical"
+        },
+        {
+          "id": "OBL-AGENT-002",
+          "location": "app/agent.py:27-28",
+          "description": "If session_id is None, generate new UUID for session",
+          "rule": "deterministic_check: if session_id is None THEN session_id = str(uuid.uuid4())",
+          "enforcement": "hard",
+          "severity": "minor"
+        },
+        {
+          "id": "OBL-AGENT-003",
+          "location": "app/agent.py:73-85",
+          "description": "If LLM response has no itinerary, create minimal itinerary with Unknown destination, 2024-01-01 dates, empty lists, and assistant_message in notes",
+          "rule": "deterministic_check: if not raw_itinerary THEN itinerary == {'destination': {'city': 'Unknown', 'country': 'Unknown'}, 'dates': {'start_date': '2024-01-01', 'end_date': '2024-01-01'}, 'flights': [], 'hotels': [], 'activities': [], 'budget': None, 'notes': assistant_message}",
+          "enforcement": "hard",
+          "severity": "major"
+        }
+      ]
+    },
+    {
+      "name": "Test Contract Validation",
+      "obligations": [
+        {
+          "id": "OBL-TEST-001",
+          "location": "tests/merit_travelops_contract.py:24-57",
+          "description": "Merit contract tests must validate response schema, itinerary schema, required fields, and expected city if specified",
+          "rule": "test_command: pytest tests/merit_travelops_contract.py::merit_contract_json_schema",
+          "enforcement": "hard",
+          "severity": "critical"
+        },
+        {
+          "id": "OBL-TEST-002",
+          "location": "tests/fixtures/expected_schemas.py:52-58",
+          "description": "Valid termination reasons are limited to: max_steps_reached, complete, success, tool_complete, final_answer",
+          "rule": "deterministic_check: termination_reason in ['max_steps_reached', 'complete', 'success', 'tool_complete', 'final_answer']",
+          "enforcement": "soft",
+          "severity": "minor"
+        }
+      ]
+    }
+  ]
+}
